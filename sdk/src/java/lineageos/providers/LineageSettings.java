@@ -3000,6 +3000,17 @@ public final class LineageSettings {
 
         /** @hide */
         public static final Validator BERRY_BLACK_THEME_VALIDATOR = sBooleanValidator;
+
+        /**
+         * Whether user is allowed to interact with quick settings on lockscreen.
+         * @hide
+         */
+        public static final String QS_TILES_TOGGLEABLE_ON_LOCK_SCREEN =
+                "qs_tiles_toggleable_on_lock_screen";
+
+        /** @hide */
+        public static final Validator QS_TILES_TOGGLEABLE_ON_LOCK_SCREEN_VALIDATOR =
+                sBooleanValidator;
         // endregion
 
         /**
@@ -3023,6 +3034,8 @@ public final class LineageSettings {
         static {
             VALIDATORS.put(BERRY_BLACK_THEME, BERRY_BLACK_THEME_VALIDATOR);
             VALIDATORS.put(GESTURE_BACK_EXCLUDE_TOP, GESTURE_BACK_EXCLUDE_TOP_VALIDATOR);
+            VALIDATORS.put(QS_TILES_TOGGLEABLE_ON_LOCK_SCREEN,
+                    QS_TILES_TOGGLEABLE_ON_LOCK_SCREEN_VALIDATOR);
             VALIDATORS.put(NETWORK_TRAFFIC_MODE, NETWORK_TRAFFIC_MODE_VALIDATOR);
             VALIDATORS.put(NETWORK_TRAFFIC_POSITION, NETWORK_TRAFFIC_POSITION_VALIDATOR);
             VALIDATORS.put(NETWORK_TRAFFIC_AUTOHIDE, NETWORK_TRAFFIC_AUTOHIDE_VALIDATOR);
