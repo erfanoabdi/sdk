@@ -845,3 +845,28 @@ package lineageos.util {
   }
 
 }
+
+package lineageos.applock {
+
+  public abstract static class IAppLockCallback {
+    ctor public IAppLockCallback();
+    method public abstract void onAppStateChanged(java.lang.String);
+  }
+
+  public class AppLockManager {
+    method public static lineageos.applock.AppLockManager getInstance(android.content.Context);
+    method public static lineageos.applock.AppLockManager getService();
+    method public void activate(boolean);
+    method public boolean isActivate();
+    method public void enableInstallLocker(boolean);
+    method public boolean isInstallLockerEnabled();
+    method public void addAppToList(java.lang.String);
+    method public void removeAppFromList(java.lang.String);
+    method public boolean isAppLocked(java.lang.String);
+    method public int getLockedAppsCount();
+    java.util.List<java.lang.String> getLockedPackages();
+    method public void addAppLockCallback(lineageos.applock.IAppLockCallback);
+    method public void removeAppLockCallback(lineageos.applock.IAppLockCallback);
+  }
+
+}
