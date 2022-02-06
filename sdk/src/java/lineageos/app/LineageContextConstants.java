@@ -116,6 +116,13 @@ public final class LineageContextConstants {
     public static final String LINEAGE_GLOBAL_ACTIONS_SERVICE = "lineageglobalactions";
 
     /**
+     * Volla App locker
+     *
+     * @hide
+     */
+    public static final String VOLLA_APPLOCK_SERVICE = "vollaapplock";
+
+    /**
      * Features supported by the Lineage SDK.
      */
     public static class Features {
