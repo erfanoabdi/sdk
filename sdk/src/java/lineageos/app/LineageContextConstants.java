@@ -103,6 +103,13 @@ public final class LineageContextConstants {
     public static final String VOLLA_FIREWALL_SERVICE = "vollafirewall";
 
     /**
+     * Volla Child mode
+     *
+     * @hide
+     */
+    public static final String VOLLA_CHILDMODE_SERVICE = "vollachildmode";
+
+    /**
      * Features supported by the Lineage SDK.
      */
     public static class Features {

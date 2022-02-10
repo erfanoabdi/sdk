@@ -109,6 +109,7 @@
         <item>org.lineageos.platform.internal.LineageGlobalActionsService</item>
         <item>org.lineageos.platform.internal.AppLockService</item>
         <item>org.lineageos.platform.internal.FirewallService</item>
+        <item>org.lineageos.platform.internal.ChildModeService</item>
     </string-array>
 
     <!-- The LineageSystemServer class that is invoked from Android's SystemServer -->
