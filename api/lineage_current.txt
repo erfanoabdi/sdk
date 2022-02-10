@@ -1223,3 +1223,14 @@ package lineageos.firewall {
   }
 
 }
+
+package lineageos.childmode {
+
+  public class ChildModeManager {
+    method public static lineageos.childmode.ChildModeManager getInstance(android.content.Context);
+    method public static lineageos.childmode.ChildModeManager getService();
+    method public void activate(boolean);
+    method public boolean isActivate();
+  }
+
+}
