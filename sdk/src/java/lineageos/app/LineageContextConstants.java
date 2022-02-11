@@ -100,6 +100,13 @@ public final class LineageContextConstants {
     public static final String VOLLA_APPLOCK_SERVICE = "vollaapplock";
 
     /**
+     * Volla Firewall
+     *
+     * @hide
+     */
+    public static final String VOLLA_FIREWALL_SERVICE = "vollafirewall";
+
+    /**
      * Features supported by the Lineage SDK.
      */
     public static class Features {
