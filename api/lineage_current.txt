@@ -870,3 +870,21 @@ package lineageos.applock {
   }
 
 }
+
+package lineageos.firewall {
+
+  public class FirewallManager {
+    method public static lineageos.firewall.FirewallManager getInstance(android.content.Context);
+    method public static lineageos.firewall.FirewallManager getService();
+    method public void activate(boolean);
+    method public boolean isActivate();
+    method public void blacklistMode(boolean);
+    method public boolean isBlacklistMode();
+    method public void addDomainToList(java.lang.String);
+    method public void removeDomainFromList(java.lang.String);
+    method public boolean isDomainOnList(java.lang.String);
+    method public int getDomainsListCount();
+    java.util.List<java.lang.String> getDomainsList();
+  }
+
+}
