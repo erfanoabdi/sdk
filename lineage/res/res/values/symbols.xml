@@ -211,4 +211,7 @@
     <java-symbol type="string" name="charging_control_notification_content_limit_reached" />
     <java-symbol type="string" name="charging_control_notification_content_target" />
     <java-symbol type="string" name="charging_control_notification_content_target_reached" />
+
+    <!-- AppLocker. -->
+    <java-symbol type="array" name="config_defaultLockedPackages" />
 </resources>
