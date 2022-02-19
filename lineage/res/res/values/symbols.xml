@@ -191,4 +191,7 @@
     <!-- Whether to notify fingerprint client of successful cancelled authentication
          (needed for some older vendor fingerprint HAL implementations) -->
     <java-symbol type="bool" name="config_fingerprintPostResetRunnableForAllClients" />
+
+    <!-- AppLocker. -->
+    <java-symbol type="array" name="config_defaultLockedPackages" />
 </resources>
