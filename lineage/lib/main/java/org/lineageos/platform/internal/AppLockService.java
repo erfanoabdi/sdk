@@ -181,8 +181,12 @@ public class AppLockService extends LineageSystemService {
             parseXml(parser);
             if (DEBUG_APPLOCK) Slog.v(TAG, "Read locked-apps.xml successfully");
         } catch (FileNotFoundException e) {
-            if (DEBUG_APPLOCK) Slog.v(TAG, "locked-apps.xml not found");
-            Slog.i(TAG, "locked-apps.xml not found");
+            Slog.i(TAG, "locked-apps.xml not found, initializing");
+            String[] defaultPackages = mContext.getResources().getStringArray(
+                    org.lineageos.platform.internal.R.array.config_defaultLockedPackages);
+            if (defaultPackages != null && defaultPackages.length > 0)
+                for (String defaultPackage : defaultPackages)
+                    addAppToList(defaultPackage);
         } catch (XmlPullParserException | IOException e) {
             throw new IllegalStateException("Failed to parse locked-apps.xml: " + mFile, e);
         }
