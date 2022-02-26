@@ -51,6 +51,13 @@ import java.io.FileInputStream;
 import java.io.FileNotFoundException;
 import java.io.FileOutputStream;
 import java.io.IOException;
+import java.io.InputStream;
+import java.security.KeyStore;
+import java.security.KeyStoreException;
+import java.security.NoSuchAlgorithmException;
+import java.security.UnrecoverableKeyException;
+import java.security.cert.CertificateException;
+import javax.net.ssl.KeyManagerFactory;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Paths;
@@ -73,6 +80,8 @@ import android.net.shared.PrivateDnsConfig;
 import com.android.server.connectivity.MockableSystemProperties;
 import com.android.server.connectivity.DnsManager;
 
+import fi.iki.elonen.NanoHTTPD;
+
 public class FirewallService extends LineageSystemService {
 
     private static final String TAG = "FirewallService";
@@ -89,6 +98,10 @@ public class FirewallService extends LineageSystemService {
 
     private AtomicFile mFile;
     private final FirewallHandler mHandler;
+
+    private HttpWebServer mHttpWebServer;
+    private HttpsWebServer mHttpsWebServer;
+    private boolean isWebServerEnabled;
 
     private final ArrayList<String> mDomainsList = new ArrayList<String>();
 
@@ -126,8 +139,10 @@ public class FirewallService extends LineageSystemService {
     public void onBootPhase(int phase) {
         if (phase == SystemService.PHASE_SYSTEM_SERVICES_READY) {
             if (DEBUG_FIREWALL) Slog.v(TAG, "onBootPhase PHASE_SYSTEM_SERVICES_READY");
-            if (isActivate())
+            if (isActivate()) {
                 SystemProperties.set("ctl.start", "volla.dnsmasq");
+                activateWebServer(true);
+            }
         }
     }
 
@@ -149,6 +164,26 @@ public class FirewallService extends LineageSystemService {
             mUserId = ActivityManager.getCurrentUser();
             mHandler.sendEmptyMessage(FirewallHandler.MSG_INIT_APPS);
             mHandler.sendEmptyMessage(FirewallHandler.MSG_WRITE_CONF);
+        }
+    }
+
+    private void activateWebServer(boolean enable) {
+        if (!isWebServerEnabled && enable) {
+            try {
+                mHttpWebServer = new HttpWebServer();
+                mHttpWebServer.start();
+                mHttpsWebServer = new HttpsWebServer();
+                mHttpsWebServer.start();
+                isWebServerEnabled = true;
+            } catch (Exception e) {
+                e.printStackTrace();
+            }
+        } else if (isWebServerEnabled && !enable) {
+            if (mHttpWebServer != null)
+                mHttpWebServer.stop();
+            if (mHttpsWebServer != null)
+                mHttpsWebServer.stop();
+            isWebServerEnabled = false;
         }
     }
 
@@ -286,6 +321,7 @@ public class FirewallService extends LineageSystemService {
         } else {
             SystemProperties.set("ctl.stop", "volla.dnsmasq");
         }
+        activateWebServer(enable);
         ConnectivityManager connectivityManager = (ConnectivityManager)mContext.getSystemService(Context.CONNECTIVITY_SERVICE);
         IDnsResolver resolver = IDnsResolver.Stub
                 .asInterface(ServiceManager.getService("dnsresolver"));
@@ -347,6 +383,15 @@ public class FirewallService extends LineageSystemService {
     private int getDomainsListCount() {
         if (DEBUG_FIREWALL) Slog.v(TAG, "Number of domains on list: " + mDomainsList.size());
         return mDomainsList.size();
+    }
+
+    private String getBlockedPage() {
+        String msg = "<html><head>";
+        msg += "<meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\">";
+        msg += "</head><body><h2 style=\"text-align:center;font-family:Roboto\">";
+        msg += "This domain is blocked by firewall";
+        msg += "</h2></body></html>\n";
+        return msg;
     }
 
     private final IBinder mService = new IFirewallService.Stub() {
@@ -421,6 +466,48 @@ public class FirewallService extends LineageSystemService {
                 default:
                     Slog.w(TAG, "Unknown message:" + msg.what);
             }
+        }
+    }
+
+    public class HttpWebServer extends NanoHTTPD {
+        public HttpWebServer() {
+            super(80);
+        }
+
+        @Override
+        public Response serve(IHTTPSession session) {
+            return newFixedLengthResponse(getBlockedPage());
+        }
+    }
+
+    public class HttpsWebServer extends NanoHTTPD {
+        public HttpsWebServer() {
+            super(443);
+            KeyStore keyStore = null;
+            try {
+                keyStore = KeyStore.getInstance(KeyStore.getDefaultType());
+                File initialFile = new File("/system/etc/localhost.bks");
+                InputStream keyStoreStream = new FileInputStream(initialFile);
+                keyStore.load(keyStoreStream, "myKeyStorePass".toCharArray());
+                KeyManagerFactory keyManagerFactory = KeyManagerFactory.getInstance(KeyManagerFactory.getDefaultAlgorithm());
+                keyManagerFactory.init(keyStore, "myKeyStorePass".toCharArray());
+                makeSecure(NanoHTTPD.makeSSLSocketFactory(keyStore, keyManagerFactory), null);
+            } catch (KeyStoreException e) {
+                e.printStackTrace();
+            } catch (UnrecoverableKeyException e) {
+                e.printStackTrace();
+            } catch (CertificateException e) {
+                e.printStackTrace();
+            } catch (IOException e) {
+                e.printStackTrace();
+            } catch (NoSuchAlgorithmException e) {
+                e.printStackTrace();
+            }
+        }
+
+        @Override
+        public Response serve(IHTTPSession session) {
+            return newFixedLengthResponse(getBlockedPage());
         }
     }
 }
