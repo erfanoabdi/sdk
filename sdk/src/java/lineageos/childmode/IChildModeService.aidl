@@ -22,4 +22,10 @@ interface IChildModeService {
     void activate(boolean enable);
 
     boolean isActivate();
+
+    boolean setPassword(String password);
+
+    boolean validatePassword(String password);
+
+    boolean isPasswortSet();
 }

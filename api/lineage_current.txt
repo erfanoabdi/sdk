@@ -896,6 +896,9 @@ package lineageos.childmode {
     method public static lineageos.childmode.ChildModeManager getService();
     method public void activate(boolean);
     method public boolean isActivate();
+    method public boolean setPassword(java.lang.String);
+    method public boolean validatePassword(java.lang.String);
+    method public boolean isPasswortSet();
   }
 
 }
