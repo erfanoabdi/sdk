@@ -88,4 +88,28 @@ public class ChildModeManager {
             throw e.rethrowFromSystemServer();
         }
     }
+
+    public boolean setPassword(String password) {
+        try {
+            return sService.setPassword(password);
+        } catch (RemoteException e) {
+            throw e.rethrowFromSystemServer();
+        }
+    }
+
+    public boolean validatePassword(String password) {
+        try {
+            return sService.validatePassword(password);
+        } catch (RemoteException e) {
+            throw e.rethrowFromSystemServer();
+        }
+    }
+
+    public boolean isPasswortSet() {
+        try {
+            return sService.isPasswortSet();
+        } catch (RemoteException e) {
+            throw e.rethrowFromSystemServer();
+        }
+    }
 }
