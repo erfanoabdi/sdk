@@ -94,4 +94,20 @@
                 android:description="@string/permdesc_manageRemotePrefs"
                 android:protectionLevel="signature|privileged" />
 
+    <!-- Allows an application to send email
+         @hide -->
+    <permission android:name="com.mediatek.permission.CTA_SEND_EMAIL"
+        android:permissionGroup="com.mediatek.permission-group.EMAIL"
+        android:label="@string/permlab_cta_send_email"
+        android:description="@string/permdesc_cta_send_email"
+        android:protectionLevel="dangerous" />
+
+    <!-- Used for runtime permissions related to email settings.
+         @hide -->
+    <permission-group android:name="com.mediatek.permission-group.EMAIL"
+        android:icon="@drawable/perm_group_email"
+        android:label="@string/permgrouplab_email"
+        android:description="@string/permgroupdesc_email"
+        android:priority="1000" />
+
 </manifest>
