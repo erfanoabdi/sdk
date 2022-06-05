@@ -46,6 +46,7 @@ import org.xmlpull.v1.XmlPullParser;
 import org.xmlpull.v1.XmlPullParserException;
 import org.xmlpull.v1.XmlSerializer;
 
+import java.io.ByteArrayOutputStream;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileNotFoundException;
@@ -79,6 +80,8 @@ import android.net.IDnsResolver;
 import android.net.shared.PrivateDnsConfig;
 import com.android.server.connectivity.MockableSystemProperties;
 import com.android.server.connectivity.DnsManager;
+import com.android.server.LocalServices;
+import com.android.server.UiModeManagerInternal;
 
 import fi.iki.elonen.NanoHTTPD;
 
@@ -95,6 +98,7 @@ public class FirewallService extends LineageSystemService {
 
     private int mUserId;
     private Context mContext;
+    private UiModeManagerInternal mUiModeMgr;
 
     private AtomicFile mFile;
     private final FirewallHandler mHandler;
@@ -111,6 +115,7 @@ public class FirewallService extends LineageSystemService {
         mContext = context;
         mHandler = new FirewallHandler(BackgroundThread.getHandler().getLooper());
         mUserId = ActivityManager.getCurrentUser();
+        mUiModeMgr = LocalServices.getService(UiModeManagerInternal.class);
     }
 
     @Override
@@ -386,12 +391,23 @@ public class FirewallService extends LineageSystemService {
     }
 
     private String getBlockedPage() {
-        String msg = "<html><head>";
-        msg += "<meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\">";
-        msg += "</head><body><h2 style=\"text-align:center;font-family:Roboto\">";
-        msg += "This domain is blocked by firewall";
-        msg += "</h2></body></html>\n";
-        return msg;
+        InputStream inputStream = mContext.getResources().openRawResource(org.lineageos.platform.internal.R.raw.firewall);
+        ByteArrayOutputStream outputStream = new ByteArrayOutputStream();
+
+        byte buf[] = new byte[1024];
+        int len;
+        try {
+            while ((len = inputStream.read(buf)) != -1) {
+                outputStream.write(buf, 0, len);
+            }
+            outputStream.close();
+            inputStream.close();
+        } catch (IOException e) {
+            return "";
+        }
+        return outputStream.toString()
+                .replace("BLOCKED_TEXT", mContext.getResources().getString(org.lineageos.platform.internal.R.string.firewall_text))
+                .replace("DARKMODE_STATUS", String.valueOf(mUiModeMgr.isNightMode()));
     }
 
     private final IBinder mService = new IFirewallService.Stub() {
