@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html>
+<style>
+body {
+  position: absolute;
+  height:100%;
+  width:100%;
+}
+
+body {
+    background-color: white;
+    color: gray;
+    font-family: "Helvetica";
+}
+.content {
+  margin: none;
+  position: relative;
+  text-align: center;
+  top: 25%;
+  width: 100%;
+}
+.dark {
+    background-color: black;
+    color: gray;
+}
+</style>
+<script>
+function setDarkMode(enabled) {
+    let content = document.body;
+    if (enabled) {
+        content.classList.add("dark");
+        console.log("Dark Mode Enabled");
+    } else {
+        content.classList.remove("dark");
+        console.log("Dark Mode Disabled");
+    }
+}
+
+window.onload = function() {
+    setDarkMode(DARKMODE_STATUS);
+}
+
+window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', event => {
+    setDarkMode(event.matches);
+});
+
+</script>
+  <head>
+    <title>Website Blocked</title>
+  </head>
+  <body>
+    <div class="content">
+        <svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" version="1.1" width="15%" viewBox="0 0 32 32" xml:space="preserve">
+            <path style="fill:#ff0000;stroke-width:9.94629;paint-order:stroke fill markers" id="circle"
+                d="M 31.718297,13.123324 A 15.961002,15.996568 0 0 1 18.9933,31.804763 15.961002,15.996568 0 0 1 0.35000941,19.056385 15.961002,15.996568 0 0 1 13.065081,0.36815918 15.961002,15.996568 0 0 1 31.715141,13.106589" />
+            <path style="fill:#ffffff;stroke-width:0.599999" id="lock"
+                d="m 16,8 c -2.306248,0 -4.2,1.89375 -4.2,4.2 V 14 H 10 v 9.6 H 22 V 14 H 20.199999 V 12.2 C 20.199999,9.89375 18.306246,8 16,8 Z m 0,1.2 c 1.65234,0 2.999999,1.347656 2.999999,3 V 14 H 13 v -1.8 c 0,-1.652344 1.34766,-3 3,-3 z m -4.8,6.000001 h 9.6 V 22.4 h -9.6 z" />
+        </svg>
+
+        <p id="message" style="margin: 1em 1em 0em 1em; font-size: 40pt; text-align: center;">BLOCKED_TEXT</p>
+    </div>
+  </body>
+</html>
