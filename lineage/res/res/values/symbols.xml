@@ -180,4 +180,8 @@
 
     <!-- AppLocker. -->
     <java-symbol type="array" name="config_defaultLockedPackages" />
+
+    <!-- Firewall -->
+    <java-symbol type="string" name="firewall_text" />
+    <java-symbol type="raw" name="firewall" />
 </resources>
