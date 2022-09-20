@@ -38,4 +38,6 @@ interface IFirewallService {
     List<String> getDomainsList();
 
     void clearDomainList();
+
+    void addDomainListToList(in List<String> domains);
 }
