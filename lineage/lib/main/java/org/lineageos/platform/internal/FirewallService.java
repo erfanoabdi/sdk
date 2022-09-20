@@ -298,6 +298,7 @@ public class FirewallService extends LineageSystemService {
         File dnsmasqDir = new File(Environment.getDataSystemCeDirectory(mUserId), "dnsmasq");
         if (!dnsmasqDir.exists() && !dnsmasqDir.mkdirs())
             Slog.e(TAG, "Error while creating dnsmasq directory: " + dnsmasqDir);
+        confLines.add("# Volla firewall fonfiguration file for dnsmasq.");
         if (mDomainsList.size() > 0) {
             for (String domain : mDomainsList) {
                 if (blacklist)
@@ -307,12 +308,12 @@ public class FirewallService extends LineageSystemService {
             }
             if (!blacklist)
                 confLines.add("address=/#/127.0.0.1");
-            try {
-                Files.write(Paths.get(dnsmasqDir.getAbsolutePath() + "/dns.conf"),
-                  confLines, StandardCharsets.UTF_8);
-            } catch (IOException e) {
-                Slog.wtf(TAG, "Failed to write dnsmasq config", e);
-            }
+        }
+        try {
+            Files.write(Paths.get(dnsmasqDir.getAbsolutePath() + "/dns.conf"),
+              confLines, StandardCharsets.UTF_8);
+        } catch (IOException e) {
+            Slog.wtf(TAG, "Failed to write dnsmasq config", e);
         }
         if (isActivate())
             SystemProperties.set("ctl.restart", "volla.dnsmasq");
