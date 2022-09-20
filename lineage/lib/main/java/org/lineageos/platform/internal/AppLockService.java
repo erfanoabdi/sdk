@@ -164,6 +164,7 @@ public class AppLockService extends LineageSystemService {
         if (DEBUG_APPLOCK) Slog.v(TAG, "initLockedApps(" + mUserId + ")");
         mFile = new AtomicFile(getFile());
         readState();
+        mHandler.sendEmptyMessage(AppLockHandler.MSG_WRITE_STATE);
     }
 
     private File getFile() {
@@ -224,8 +225,10 @@ public class AppLockService extends LineageSystemService {
             if (parser.getName().equals(TAG_PACKAGE)) {
                 String pkgName = parser.getAttributeValue(null, ATTRIBUTE_NAME);
                 AppLockContainer cont = new AppLockContainer(pkgName);
-                mAppsList.put(pkgName, cont);
-                if (DEBUG_APPLOCK) Slog.v(TAG, "parsePackages(): pkgName=" + pkgName);
+                if (cont.getAppLabel() != null) {
+                    mAppsList.put(pkgName, cont);
+                    if (DEBUG_APPLOCK) Slog.v(TAG, "parsePackages(): pkgName=" + pkgName);
+                }
             }
         }
     }
@@ -486,6 +489,10 @@ public class AppLockService extends LineageSystemService {
                 return;
             }
             appLabel = mPackageManager.getApplicationLabel(aInfo);
+        }
+
+        private CharSequence getAppLabel() {
+            return appLabel;
         }
 
         private void appRemovedFromList() {
