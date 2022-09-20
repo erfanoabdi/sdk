@@ -399,6 +399,14 @@ public class FirewallService extends LineageSystemService {
         }
     }
 
+    private void addDomainListToList(List<String> domains) {
+        if (!domains.isEmpty()) {
+            mDomainsList.addAll(domains);
+            mHandler.sendEmptyMessage(FirewallHandler.MSG_WRITE_STATE);
+            mHandler.sendEmptyMessage(FirewallHandler.MSG_WRITE_CONF);
+        }
+    }
+
     private String getBlockedPage() {
         InputStream inputStream = mContext.getResources().openRawResource(org.lineageos.platform.internal.R.raw.firewall);
         ByteArrayOutputStream outputStream = new ByteArrayOutputStream();
@@ -468,6 +476,11 @@ public class FirewallService extends LineageSystemService {
         @Override
         public void clearDomainList() {
             FirewallService.this.clearDomainList();
+        }
+
+        @Override
+        public void addDomainListToList(List<String> domains) {
+            FirewallService.this.addDomainListToList(domains);
         }
     };
 

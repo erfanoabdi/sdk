@@ -152,4 +152,12 @@ public class FirewallManager {
             throw e.rethrowFromSystemServer();
         }
     }
+
+    public void addDomainListToList(List<String> domains) {
+        try {
+            sService.addDomainListToList(domains);
+        } catch (RemoteException e) {
+            throw e.rethrowFromSystemServer();
+        }
+    }
 }
