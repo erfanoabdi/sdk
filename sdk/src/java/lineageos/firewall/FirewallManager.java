@@ -144,4 +144,12 @@ public class FirewallManager {
             throw e.rethrowFromSystemServer();
         }
     }
+
+    public void clearDomainList() {
+        try {
+            sService.clearDomainList();
+        } catch (RemoteException e) {
+            throw e.rethrowFromSystemServer();
+        }
+    }
 }

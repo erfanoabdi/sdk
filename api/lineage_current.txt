@@ -884,6 +884,7 @@ package lineageos.firewall {
     method public boolean isDomainOnList(java.lang.String);
     method public int getDomainsListCount();
     java.util.List<java.lang.String> getDomainsList();
+    method public void clearDomainList();
   }
 
 }
