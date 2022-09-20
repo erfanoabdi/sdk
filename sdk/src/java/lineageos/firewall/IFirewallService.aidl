@@ -36,4 +36,6 @@ interface IFirewallService {
     int getDomainsListCount();
 
     List<String> getDomainsList();
+
+    void clearDomainList();
 }
