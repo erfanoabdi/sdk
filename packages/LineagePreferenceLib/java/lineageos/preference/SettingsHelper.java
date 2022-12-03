@@ -20,6 +20,7 @@ import android.content.Context;
 import android.database.ContentObserver;
 import android.net.Uri;
 import android.os.Handler;
+import android.os.UserHandle;
 import android.provider.Settings;
 import android.util.ArrayMap;
 import android.util.ArraySet;
@@ -184,7 +185,7 @@ public class SettingsHelper {
                 for (Uri contentUri : contentUris) {
                     uris.add(contentUri);
                     if (!mRefs.contains(contentUri)) {
-                        mResolver.registerContentObserver(contentUri, false, this);
+                        mResolver.registerContentObserver(contentUri, false, this, UserHandle.USER_ALL);
                         listener.onSettingsChanged(null);
                     }
                     mRefs.add(contentUri);
