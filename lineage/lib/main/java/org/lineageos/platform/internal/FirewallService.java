@@ -295,7 +295,7 @@ public class FirewallService extends LineageSystemService {
     private void resetDnsConf() {
         ArrayList<String> confLines = new ArrayList<String>();
         boolean blacklist = isBlacklistMode();
-        File dnsmasqDir = new File(Environment.getDataSystemCeDirectory(mUserId), "dnsmasq");
+        File dnsmasqDir = new File(Environment.getDataSystemCeDirectory(0), "dnsmasq");
         if (!dnsmasqDir.exists() && !dnsmasqDir.mkdirs())
             Slog.e(TAG, "Error while creating dnsmasq directory: " + dnsmasqDir);
         confLines.add("# Volla firewall fonfiguration file for dnsmasq.");
