@@ -21,6 +21,7 @@ import android.content.Context;
 import android.os.Environment;
 import android.os.SystemProperties;
 import android.os.IBinder;
+import android.os.UserHandle;
 import android.os.UserManager;
 import android.util.Slog;
 
@@ -122,6 +123,8 @@ public class ChildModeService extends LineageSystemService {
         if (firewallManager.isActivate() != enable)
             firewallManager.activate(enable);
         SystemProperties.set("persist.volla.childmode.enable", enable ? "true" : "false");
+        UserManager.get(mContext).setUserRestriction(UserManager.DISALLOW_USER_SWITCH,
+            enable, UserHandle.of(mUserId));
     }
 
     public boolean isActivate() {
