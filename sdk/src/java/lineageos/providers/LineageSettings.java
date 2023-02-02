@@ -2055,6 +2055,15 @@ public final class LineageSettings {
                 sNonNegativeIntegerValidator;
 
         /**
+         * Whether to enable microg.
+         */
+        public static final String ENABLE_MICROG = "enable_microg";
+
+        /** @hide */
+        public static final Validator ENABLE_MICROG_VALIDATOR =
+                sBooleanValidator;
+
+        /**
          * I can haz more bukkits
          * @hide
          */
@@ -2321,6 +2330,8 @@ public final class LineageSettings {
                     ENABLE_TASKBAR_VALIDATOR);
             VALIDATORS.put(FINGERPRINT_WAKE_UNLOCK,
                     FINGERPRINT_WAKE_UNLOCK_VALIDATOR);
+            VALIDATORS.put(ENABLE_MICROG,
+                    ENABLE_MICROG_VALIDATOR);
             VALIDATORS.put(__MAGICAL_TEST_PASSING_ENABLER,
                     __MAGICAL_TEST_PASSING_ENABLER_VALIDATOR);
         };
