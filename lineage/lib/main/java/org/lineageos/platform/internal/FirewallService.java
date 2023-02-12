@@ -17,6 +17,8 @@
 package org.lineageos.platform.internal;
 
 import android.app.ActivityManager;
+import android.annotation.NonNull;
+import android.annotation.Nullable;
 import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.Intent;
@@ -41,6 +43,8 @@ import android.util.Xml;
 
 import com.android.internal.os.BackgroundThread;
 import com.android.server.SystemService;
+import com.android.server.UiModeManagerInternal;
+import com.android.server.LocalServices;
 
 import org.xmlpull.v1.XmlPullParser;
 import org.xmlpull.v1.XmlPullParserException;
@@ -70,18 +74,7 @@ import libcore.io.IoUtils;
 import lineageos.app.LineageContextConstants;
 import lineageos.firewall.IFirewallService;
 
-import static android.net.NetworkCapabilities.MIN_TRANSPORT;
-import static android.net.NetworkCapabilities.MAX_TRANSPORT;
-
-import android.net.Network;
-import android.net.ConnectivityManager;
-import android.net.LinkProperties;
-import android.net.IDnsResolver;
-import android.net.shared.PrivateDnsConfig;
-import com.android.server.connectivity.MockableSystemProperties;
-import com.android.server.connectivity.DnsManager;
-import com.android.server.LocalServices;
-import com.android.server.UiModeManagerInternal;
+import static android.provider.Settings.Global.PRIVATE_DNS_DEFAULT_MODE;
 
 import fi.iki.elonen.NanoHTTPD;
 
@@ -130,10 +123,11 @@ public class FirewallService extends LineageSystemService {
     }
 
     @Override
-    public void onUnlockUser(int userHandle) {
-        if (DEBUG_FIREWALL) Slog.v(TAG, "onUnlockUser() mUserId:" + userHandle);
+    public void onUserUnlocking(@NonNull TargetUser targetUser) {
+        int userHandle = targetUser.getUserIdentifier();
+        if (DEBUG_FIREWALL) Slog.v(TAG, "onUserUnlocking() mUserId:" + userHandle);
         if (!UserManager.get(mContext).isManagedProfile(userHandle)) {
-            if (DEBUG_FIREWALL) Slog.v(TAG, "onUnlockUser() is NOT ManagedProfile");
+            if (DEBUG_FIREWALL) Slog.v(TAG, "onUserUnlocking() is NOT ManagedProfile");
             mUserId = userHandle;
             mHandler.sendEmptyMessage(FirewallHandler.MSG_INIT_APPS);
             mHandler.sendEmptyMessage(FirewallHandler.MSG_WRITE_CONF);
@@ -152,7 +146,8 @@ public class FirewallService extends LineageSystemService {
     }
 
     @Override
-    public void onSwitchUser(int userHandle) {
+    public void onUserSwitching(@Nullable TargetUser from, @NonNull TargetUser to) {
+        int userHandle = to.getUserIdentifier();
         if (DEBUG_FIREWALL) Slog.v(TAG, "onSwitchUser() mUserId:" + userHandle);
         if (!UserManager.get(mContext).isManagedProfile(userHandle)) {
             if (DEBUG_FIREWALL) Slog.v(TAG, "onSwitchUser() is NOT ManagedProfile");
@@ -163,7 +158,8 @@ public class FirewallService extends LineageSystemService {
     }
 
     @Override
-    public void onStopUser(int userHandle) {
+    public void onUserStopping(@NonNull TargetUser targetUser) {
+        int userHandle = targetUser.getUserIdentifier();
         if (DEBUG_FIREWALL) Slog.v(TAG, "onStopUser() userHandle:" + userHandle);
         if (mUserId == userHandle) {
             mUserId = ActivityManager.getCurrentUser();
@@ -328,23 +324,8 @@ public class FirewallService extends LineageSystemService {
             SystemProperties.set("ctl.stop", "volla.dnsmasq");
         }
         activateWebServer(enable);
-        ConnectivityManager connectivityManager = (ConnectivityManager)mContext.getSystemService(Context.CONNECTIVITY_SERVICE);
-        IDnsResolver resolver = IDnsResolver.Stub
-                .asInterface(ServiceManager.getService("dnsresolver"));
-        MockableSystemProperties systemProperties = new MockableSystemProperties();
-        DnsManager dnsManager = new DnsManager(mContext, resolver, systemProperties);
-        Network network = connectivityManager.getActiveNetwork();
-        LinkProperties linkProperties = connectivityManager.getActiveLinkProperties();
-        PrivateDnsConfig cfg = dnsManager.getPrivateDnsConfig();
-        if (network != null) {
-            dnsManager.updatePrivateDns(network, cfg);
-            dnsManager.updateTransportsForNetwork(network.netId, IntStream.range(MIN_TRANSPORT, MAX_TRANSPORT).toArray());
-            dnsManager.noteDnsServersForNetwork(network.netId, linkProperties);
-            dnsManager.sendDnsConfigurationForNetwork(network.netId);
-            dnsManager.setDefaultDnsSystemProperties(linkProperties.getDnsServers());
-            dnsManager.flushVmDnsCache();
-            dnsManager.updatePrivateDnsStatus(network.netId, linkProperties);
-        }
+        Settings.Global.putString(mContext.getContentResolver(), PRIVATE_DNS_DEFAULT_MODE,
+            enable ? "off" : "opportunistic");
     }
 
     public boolean isActivate() {

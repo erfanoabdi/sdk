@@ -17,6 +17,8 @@
 package org.lineageos.platform.internal;
 
 import android.app.ActivityManager;
+import android.annotation.NonNull;
+import android.annotation.Nullable;
 import android.content.Context;
 import android.os.Environment;
 import android.os.SystemProperties;
@@ -82,26 +84,29 @@ public class ChildModeService extends LineageSystemService {
     }
 
     @Override
-    public void onUnlockUser(int userHandle) {
-        if (DEBUG_CHILDMODE) Slog.v(TAG, "onUnlockUser() mUserId:" + userHandle);
+    public void onUserUnlocking(@NonNull TargetUser targetUser) {
+        int userHandle = targetUser.getUserIdentifier();
+        if (DEBUG_CHILDMODE) Slog.v(TAG, "onUserUnlocking() mUserId:" + userHandle);
         if (!UserManager.get(mContext).isManagedProfile(userHandle)) {
-            if (DEBUG_CHILDMODE) Slog.v(TAG, "onUnlockUser() is NOT ManagedProfile");
+            if (DEBUG_CHILDMODE) Slog.v(TAG, "onUserUnlocking() is NOT ManagedProfile");
             mUserId = userHandle;
         }
     }
 
     @Override
-    public void onSwitchUser(int userHandle) {
-        if (DEBUG_CHILDMODE) Slog.v(TAG, "onSwitchUser() mUserId:" + userHandle);
+    public void onUserSwitching(@Nullable TargetUser from, @NonNull TargetUser to) {
+        int userHandle = to.getUserIdentifier();
+        if (DEBUG_CHILDMODE) Slog.v(TAG, "onUserSwitching() mUserId:" + userHandle);
         if (!UserManager.get(mContext).isManagedProfile(userHandle)) {
-            if (DEBUG_CHILDMODE) Slog.v(TAG, "onSwitchUser() is NOT ManagedProfile");
+            if (DEBUG_CHILDMODE) Slog.v(TAG, "onUserSwitching() is NOT ManagedProfile");
             mUserId = userHandle;
         }
     }
 
     @Override
-    public void onStopUser(int userHandle) {
-        if (DEBUG_CHILDMODE) Slog.v(TAG, "onStopUser() userHandle:" + userHandle);
+    public void onUserStopping(@NonNull TargetUser targetUser) {
+        int userHandle = targetUser.getUserIdentifier();
+        if (DEBUG_CHILDMODE) Slog.v(TAG, "onUserStopping() userHandle:" + userHandle);
         if (mUserId == userHandle) {
             mUserId = ActivityManager.getCurrentUser();
         }
