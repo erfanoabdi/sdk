@@ -18,6 +18,8 @@
 package org.lineageos.platform.internal;
 
 import android.app.ActivityManager;
+import android.annotation.NonNull;
+import android.annotation.Nullable;
 import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.Intent;
@@ -132,18 +134,20 @@ public class AppLockService extends LineageSystemService {
     }
 
     @Override
-    public void onUnlockUser(int userHandle) {
-        if (DEBUG_APPLOCK) Slog.v(TAG, "onUnlockUser() mUserId:" + userHandle);
+    public void onUserUnlocking(@NonNull TargetUser targetUser) {
+        int userHandle = targetUser.getUserIdentifier();
+        if (DEBUG_APPLOCK) Slog.v(TAG, "onUserUnlocking() mUserId:" + userHandle);
         if (!UserManager.get(mContext).isManagedProfile(userHandle)) {
-            if (DEBUG_APPLOCK) Slog.v(TAG, "onUnlockUser() is NOT ManagedProfile");
+            if (DEBUG_APPLOCK) Slog.v(TAG, "onUserUnlocking() is NOT ManagedProfile");
             mUserId = userHandle;
             mHandler.sendEmptyMessage(AppLockHandler.MSG_INIT_APPS);
         }
     }
 
     @Override
-    public void onSwitchUser(int userHandle) {
-        if (DEBUG_APPLOCK) Slog.v(TAG, "onSwitchUser() mUserId:" + userHandle);
+    public void onUserSwitching(@Nullable TargetUser from, @NonNull TargetUser to) {
+        int userHandle = to.getUserIdentifier();
+        if (DEBUG_APPLOCK) Slog.v(TAG, "onUserSwitching() mUserId:" + userHandle);
         if (!UserManager.get(mContext).isManagedProfile(userHandle)) {
             if (DEBUG_APPLOCK) Slog.v(TAG, "onSwitchUser() is NOT ManagedProfile");
             mUserId = userHandle;
@@ -152,8 +156,9 @@ public class AppLockService extends LineageSystemService {
     }
 
     @Override
-    public void onStopUser(int userHandle) {
-        if (DEBUG_APPLOCK) Slog.v(TAG, "onStopUser() userHandle:" + userHandle);
+    public void onUserStopping(@NonNull TargetUser targetUser) {
+        int userHandle = targetUser.getUserIdentifier();
+        if (DEBUG_APPLOCK) Slog.v(TAG, "onUserStopping() userHandle:" + userHandle);
         if (mUserId == userHandle) {
             mUserId = ActivityManager.getCurrentUser();
             mHandler.sendEmptyMessage(AppLockHandler.MSG_INIT_APPS);
