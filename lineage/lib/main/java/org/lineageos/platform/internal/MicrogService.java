@@ -16,6 +16,7 @@
 
 package org.lineageos.platform.internal;
 
+import android.annotation.NonNull;
 import android.content.Context;
 import android.os.ServiceManager;
 import android.util.Log;
@@ -64,7 +65,8 @@ public class MicrogService extends LineageSystemService {
     }
 
     @Override
-    public void onUnlockUser(int userId) {
+    public void onUserUnlocking(@NonNull TargetUser targetUser) {
+        int userId = targetUser.getUserIdentifier();
         Slog.v(TAG, "Loading Service");
         settingChanged(userId);
         SettingsHelper.get(mContext).startWatching(new SettingsHelper.OnSettingsChangeListener() {
