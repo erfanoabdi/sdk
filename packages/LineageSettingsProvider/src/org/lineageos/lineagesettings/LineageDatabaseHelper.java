@@ -60,7 +60,7 @@ public class LineageDatabaseHelper extends SQLiteOpenHelper{
     private static final boolean LOCAL_LOGV = false;
 
     private static final String DATABASE_NAME = "lineagesettings.db";
-    private static final int DATABASE_VERSION = 16;
+    private static final int DATABASE_VERSION = 17;
 
     private static final String DATABASE_NAME_OLD = "cmsettings.db";
 
@@ -419,6 +419,14 @@ public class LineageDatabaseHelper extends SQLiteOpenHelper{
             }
             upgradeVersion = 16;
         }
+
+        if (upgradeVersion < 17) {
+            // Disable RESTRICTED_NETWORKING_MODE
+            Settings.Global.putInt(mContext.getContentResolver(),
+                    Settings.Global.RESTRICTED_NETWORKING_MODE, 0);
+
+            upgradeVersion = 17;
+        }
         // *** Remember to update DATABASE_VERSION above!
         if (upgradeVersion != newVersion) {
             Log.wtf(TAG, "warning: upgrading settings database to version "
@@ -572,7 +580,7 @@ public class LineageDatabaseHelper extends SQLiteOpenHelper{
 
     private void loadRestrictedNetworkingModeSetting() {
         Settings.Global.putInt(mContext.getContentResolver(),
-                Settings.Global.RESTRICTED_NETWORKING_MODE, 1);
+                Settings.Global.RESTRICTED_NETWORKING_MODE, 0);
         try {
             List<PackageInfo> packages = new ArrayList<>();
             for (UserInfo userInfo : UserManager.get(mContext).getAliveUsers()) {
