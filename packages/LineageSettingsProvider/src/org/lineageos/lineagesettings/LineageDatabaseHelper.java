@@ -274,15 +274,20 @@ public class LineageDatabaseHelper extends SQLiteOpenHelper{
         }
 
         if (upgradeVersion < 17) {
+            upgradeVersion = 17;
+        }
+
+        if (upgradeVersion < 18) {
+            // Enable RESTRICTED_NETWORKING_MODE
+            if (mUserHandle == UserHandle.USER_OWNER) {
+                loadRestrictedNetworkingModeSetting();
+            }
             // Move berry_black_theme to secure
             moveSettingsToNewTable(db, LineageTableNames.TABLE_SYSTEM,
                     LineageTableNames.TABLE_SECURE, new String[] {
                     LineageSettings.Secure.BERRY_BLACK_THEME
             }, true);
-            upgradeVersion = 17;
-        }
 
-        if (upgradeVersion < 18) {
             Integer defaultValue = mContext.getResources().getBoolean(
                     org.lineageos.platform.internal.R.bool.config_fingerprintWakeAndUnlock)
                     ? 1 : 0; // Reversed since they're reversed again below
