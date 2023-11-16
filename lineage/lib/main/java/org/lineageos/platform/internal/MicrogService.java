@@ -17,16 +17,19 @@
 package org.lineageos.platform.internal;
 
 import android.annotation.NonNull;
+import android.content.ContentResolver;
 import android.content.Context;
+import android.content.pm.PackageManager;
+import android.database.ContentObserver;
+import android.os.Handler;
+import android.os.Looper;
+import android.os.UserHandle;
 import android.os.ServiceManager;
 import android.util.Log;
 import android.util.Slog;
 import android.net.Uri;
 
-import com.android.server.pm.PackageManagerService;
-
 import lineageos.app.LineageContextConstants;
-import lineageos.preference.SettingsHelper;
 import lineageos.providers.LineageSettings;
 
 import static android.content.pm.PackageManager.COMPONENT_ENABLED_STATE_DISABLED;
@@ -40,7 +43,6 @@ public class MicrogService extends LineageSystemService {
             LineageSettings.System.getUriFor(LineageSettings.System.ENABLE_MICROG);
 
     private final Context mContext;
-    private final PackageManagerService mPm;
 
     private static final String[] MICROG_PACKAGES = new String[]{
             "com.google.android.gms",
@@ -51,7 +53,6 @@ public class MicrogService extends LineageSystemService {
     public MicrogService(Context context) {
         super(context);
         mContext = context;
-        mPm = (PackageManagerService) ServiceManager.getService("package");
     }
 
     @Override
@@ -69,12 +70,16 @@ public class MicrogService extends LineageSystemService {
         int userId = targetUser.getUserIdentifier();
         Slog.v(TAG, "Loading Service");
         settingChanged(userId);
-        SettingsHelper.get(mContext).startWatching(new SettingsHelper.OnSettingsChangeListener() {
+        ContentResolver resolver = mContext.getContentResolver();
+
+        resolver.registerContentObserver(ENABLE_MICROG_URI, false, new ContentObserver(new Handler(Looper.getMainLooper())) {
             @Override
-            public void onSettingsChanged(Uri settingsUri) {
+            public void onChange(boolean selfChange, Uri uri) {
+                super.onChange(selfChange, uri);
+
                 settingChanged(userId);
             }
-        }, ENABLE_MICROG_URI);
+        }, UserHandle.USER_ALL);
     }
 
     private void settingChanged(int userId) {
@@ -87,11 +92,13 @@ public class MicrogService extends LineageSystemService {
     }
 
     private void setAppEnabled(String packageName, boolean enabled, int userId) {
-        int currentState = mPm.getApplicationEnabledSetting(packageName, userId);
+        PackageManager packageManager = mContext.createContextAsUser(UserHandle.of(userId), 0).getPackageManager();
+
+        int currentState = packageManager.getApplicationEnabledSetting(packageName);
         boolean isCurrentEnabled = (currentState == COMPONENT_ENABLED_STATE_DEFAULT) || (currentState == COMPONENT_ENABLED_STATE_ENABLED);
         if (isCurrentEnabled != enabled) {
             int state = enabled ? COMPONENT_ENABLED_STATE_ENABLED : COMPONENT_ENABLED_STATE_DISABLED;
-            mPm.setApplicationEnabledSetting(packageName, state, 0, userId, TAG);
+            packageManager.setApplicationEnabledSetting(packageName, state, 0);
         }
     }
 }
