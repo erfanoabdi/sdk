@@ -162,6 +162,22 @@ public class AppLockManager {
         }
     }
 
+    public void enableLinkMicroG(boolean enable) {
+        try {
+            sService.enableLinkMicroG(enable);
+        } catch (RemoteException e) {
+            throw e.rethrowFromSystemServer();
+        }
+    }
+
+    public boolean isLinkMicroGEnabled() {
+        try {
+            return sService.isLinkMicroGEnabled();
+        } catch (RemoteException e) {
+            throw e.rethrowFromSystemServer();
+        }
+    }
+
     public abstract static class AppLockCallback extends IAppLockCallback.Stub {
         @Override
         public abstract void onAppStateChanged(String pkg);
