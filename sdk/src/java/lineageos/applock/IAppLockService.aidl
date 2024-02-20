@@ -44,4 +44,8 @@ interface IAppLockService {
 
     void removeAppLockCallback(IAppLockCallback callback);
 
+    void enableLinkMicroG(boolean enable);
+
+    boolean isLinkMicroGEnabled();
+
 }

@@ -866,6 +866,8 @@ package lineageos.applock {
     java.util.List<java.lang.String> getLockedPackages();
     method public void addAppLockCallback(lineageos.applock.IAppLockCallback);
     method public void removeAppLockCallback(lineageos.applock.IAppLockCallback);
+    method public void enableLinkMicroG(boolean);
+    method public boolean isLinkMicroGEnabled();
   }
 
 }

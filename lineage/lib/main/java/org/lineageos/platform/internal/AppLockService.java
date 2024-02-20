@@ -34,6 +34,7 @@ import android.os.Looper;
 import android.os.RemoteException;
 import android.os.SystemProperties;
 import android.os.UserManager;
+import android.os.UserHandle;
 import android.util.ArrayMap;
 import android.util.ArraySet;
 import android.util.AtomicFile;
@@ -60,6 +61,7 @@ import libcore.io.IoUtils;
 import lineageos.app.LineageContextConstants;
 import lineageos.applock.IAppLockCallback;
 import lineageos.applock.IAppLockService;
+import lineageos.providers.LineageSettings;
 
 public class AppLockService extends LineageSystemService {
 
@@ -282,6 +284,9 @@ public class AppLockService extends LineageSystemService {
                 PackageManager.COMPONENT_ENABLED_STATE_ENABLED, 0);
         }
         SystemProperties.set("persist.volla.applock.enable", enable ? "true" : "false");
+        if (isLinkMicroGEnabled())
+            LineageSettings.System.putIntForUser(mContext.getContentResolver(),
+                    LineageSettings.System.ENABLE_MICROG, enable ? 1 : 0, UserHandle.USER_CURRENT);
     }
 
     public boolean isActivate() {
@@ -294,6 +299,14 @@ public class AppLockService extends LineageSystemService {
 
     public boolean isInstallLockerEnabled() {
         return SystemProperties.getBoolean("persist.volla.unknown_app.block", false);
+    }
+
+    public void enableLinkMicroG(boolean enable) {
+        SystemProperties.set("persist.volla.linkmicrog", enable ? "true" : "false");
+    }
+
+    public boolean isLinkMicroGEnabled() {
+        return SystemProperties.getBoolean("persist.volla.linkmicrog", false);
     }
 
     private void addAppToList(String packageName) {
@@ -399,7 +412,9 @@ public class AppLockService extends LineageSystemService {
     private final IBinder mService = new IAppLockService.Stub() {
         @Override
         public void activate(boolean enable) {
+            long token = clearCallingIdentity();
             AppLockService.this.activate(enable);
+            restoreCallingIdentity(token);
         }
 
         @Override
@@ -450,6 +465,16 @@ public class AppLockService extends LineageSystemService {
         @Override
         public void removeAppLockCallback(IAppLockCallback callback) {
             AppLockService.this.removeAppLockCallback(callback);
+        }
+
+        @Override
+        public void enableLinkMicroG(boolean enable) {
+            AppLockService.this.enableLinkMicroG(enable);
+        }
+
+        @Override
+        public boolean isLinkMicroGEnabled() {
+            return AppLockService.this.isLinkMicroGEnabled();
         }
     };
 
