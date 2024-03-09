@@ -40,4 +40,15 @@ interface IFirewallService {
     void clearDomainList();
 
     void addDomainListToList(in List<String> domains);
+
+    void addAppToList(String app);
+
+    void removeAppFromList(String app);
+
+    boolean isAppOnList(String app);
+
+    int getAppsListCount();
+
+    List<String> getAppsList();
+
 }

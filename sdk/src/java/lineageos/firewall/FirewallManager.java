@@ -160,4 +160,44 @@ public class FirewallManager {
             throw e.rethrowFromSystemServer();
         }
     }
+
+    public void addAppToList(String app) {
+        try {
+            sService.addAppToList(app);
+        } catch (RemoteException e) {
+            throw e.rethrowFromSystemServer();
+        }
+    }
+
+    public void removeAppFromList(String app) {
+        try {
+            sService.removeAppFromList(app);
+        } catch (RemoteException e) {
+            throw e.rethrowFromSystemServer();
+        }
+    }
+
+    public boolean isAppOnList(String app) {
+        try {
+            return sService.isAppOnList(app);
+        } catch (RemoteException e) {
+            throw e.rethrowFromSystemServer();
+        }
+    }
+
+    public int getAppsListCount() {
+        try {
+            return sService.getAppsListCount();
+        } catch (RemoteException e) {
+            throw e.rethrowFromSystemServer();
+        }
+    }
+
+    public List<String> getAppsList() {
+        try {
+            return sService.getAppsList();
+        } catch (RemoteException e) {
+            throw e.rethrowFromSystemServer();
+        }
+    }
 }

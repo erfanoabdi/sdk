@@ -888,6 +888,10 @@ package lineageos.firewall {
     java.util.List<java.lang.String> getDomainsList();
     method public void clearDomainList();
     method public void addDomainListToList(java.util.List<java.lang.String>);
+    method public void addAppToList(java.lang.String);
+    method public void removeAppFromList(java.lang.String);
+    method public boolean isAppOnList(java.lang.String);
+    method public int getAppsListCount();
   }
 
 }
