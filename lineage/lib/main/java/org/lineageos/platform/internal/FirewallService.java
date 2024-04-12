@@ -280,7 +280,8 @@ public class FirewallService extends LineageSystemService {
 
     private void serializeLockedApps(XmlSerializer serializer) throws IOException {
         serializer.startTag(null, TAG_LISTED_DOMAINS);
-        for (String domain : mDomainsList) {
+        ArrayList<String> newDomainsList = new ArrayList<>(mDomainsList);
+        for (String domain : newDomainsList) {
             serializer.startTag(null, TAG_DOMAIN);
             serializer.attribute(null, ATTRIBUTE_NAME, domain);
             serializer.endTag(null, TAG_DOMAIN);
@@ -290,13 +291,14 @@ public class FirewallService extends LineageSystemService {
 
     private void resetDnsConf() {
         ArrayList<String> confLines = new ArrayList<String>();
+        ArrayList<String> newDomainsList = new ArrayList<>(mDomainsList);
         boolean blacklist = isBlacklistMode();
         File dnsmasqDir = new File(Environment.getDataSystemCeDirectory(0), "dnsmasq");
         if (!dnsmasqDir.exists() && !dnsmasqDir.mkdirs())
             Slog.e(TAG, "Error while creating dnsmasq directory: " + dnsmasqDir);
         confLines.add("# Volla firewall fonfiguration file for dnsmasq.");
-        if (mDomainsList.size() > 0) {
-            for (String domain : mDomainsList) {
+        if (newDomainsList.size() > 0) {
+            for (String domain : newDomainsList) {
                 if (blacklist)
                     confLines.add("address=/" + domain + "/127.0.0.1");
                 else
