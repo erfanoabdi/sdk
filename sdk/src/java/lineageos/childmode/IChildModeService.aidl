@@ -28,4 +28,6 @@ interface IChildModeService {
     boolean validatePassword(String password);
 
     boolean isPasswortSet();
+
+    boolean isAvailable();
 }

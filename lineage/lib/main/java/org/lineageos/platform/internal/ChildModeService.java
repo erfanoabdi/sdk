@@ -22,6 +22,7 @@ import android.annotation.Nullable;
 import android.content.Context;
 import android.os.Environment;
 import android.os.SystemProperties;
+import android.os.Binder;
 import android.os.IBinder;
 import android.os.UserHandle;
 import android.os.UserManager;
@@ -137,7 +138,7 @@ public class ChildModeService extends LineageSystemService {
     }
 
     public boolean setPassword(String password) {
-        if (isActivate())
+        if (isActivate() && isPasswortSet())
             return false;
 
         byte[] hash = mDigest.digest(password.getBytes(StandardCharsets.UTF_8));
@@ -181,7 +182,8 @@ public class ChildModeService extends LineageSystemService {
     private final IBinder mService = new IChildModeService.Stub() {
         @Override
         public void activate(boolean enable) {
-            ChildModeService.this.activate(enable);
+            if (isAvailable())
+                ChildModeService.this.activate(enable);
         }
 
         @Override
@@ -191,17 +193,31 @@ public class ChildModeService extends LineageSystemService {
 
         @Override
         public boolean setPassword(String password) {
-            return ChildModeService.this.setPassword(password);
+            if (isAvailable())
+                return ChildModeService.this.setPassword(password);
+
+            return false;
         }
 
         @Override
         public boolean validatePassword(String password) {
-            return ChildModeService.this.validatePassword(password);
+            if (isAvailable())
+                return ChildModeService.this.validatePassword(password);
+
+            return false;
         }
 
         @Override
         public boolean isPasswortSet() {
-            return ChildModeService.this.isPasswortSet();
+            if (isAvailable())
+                return ChildModeService.this.isPasswortSet();
+
+            return false;
+        }
+
+        @Override
+        public boolean isAvailable() {
+            return Binder.getCallingUserHandle().isSystem();
         }
     };
 }
