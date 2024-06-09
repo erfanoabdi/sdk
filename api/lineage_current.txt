@@ -906,6 +906,7 @@ package lineageos.childmode {
     method public boolean setPassword(java.lang.String);
     method public boolean validatePassword(java.lang.String);
     method public boolean isPasswortSet();
+    method public boolean isAvailable();
   }
 
 }

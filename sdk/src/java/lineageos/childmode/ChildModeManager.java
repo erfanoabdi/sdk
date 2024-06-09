@@ -112,4 +112,12 @@ public class ChildModeManager {
             throw e.rethrowFromSystemServer();
         }
     }
+
+    public boolean isAvailable() {
+        try {
+            return sService.isAvailable();
+        } catch (RemoteException e) {
+            throw e.rethrowFromSystemServer();
+        }
+    }
 }
