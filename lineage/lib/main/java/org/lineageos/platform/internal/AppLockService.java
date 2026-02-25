@@ -283,10 +283,13 @@ public class AppLockService extends LineageSystemService {
                 PackageManager.COMPONENT_ENABLED_STATE_DISABLED :
                 PackageManager.COMPONENT_ENABLED_STATE_ENABLED, 0);
         }
-        SystemProperties.set("persist.volla.applock.enable", enable ? "true" : "false");
-        if (isLinkMicroGEnabled())
+        if (isLinkMicroGEnabled() && (isActivate() != enable)) {
+            int value = LineageSettings.System.getIntForUser(mContext.getContentResolver(),
+                    LineageSettings.System.ENABLE_MICROG, 0, UserHandle.USER_CURRENT);
             LineageSettings.System.putIntForUser(mContext.getContentResolver(),
-                    LineageSettings.System.ENABLE_MICROG, enable ? 0 : 1, UserHandle.USER_CURRENT);
+                    LineageSettings.System.ENABLE_MICROG, (value == 1) ? 0 : 1, UserHandle.USER_CURRENT);
+        }
+        SystemProperties.set("persist.volla.applock.enable", enable ? "true" : "false");
     }
 
     public boolean isActivate() {
