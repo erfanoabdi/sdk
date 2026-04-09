@@ -43,6 +43,7 @@ import android.util.ArraySet;
 import android.util.AtomicFile;
 import android.util.Slog;
 import android.util.Xml;
+import android.view.Display;
 
 import com.android.internal.os.BackgroundThread;
 import com.android.server.SystemService;
@@ -572,7 +573,7 @@ public class FirewallService extends LineageSystemService {
         }
         return outputStream.toString()
                 .replace("BLOCKED_TEXT", mContext.getResources().getString(org.lineageos.platform.internal.R.string.firewall_text))
-                .replace("DARKMODE_STATUS", String.valueOf(mUiModeMgr.isNightMode()));
+                .replace("DARKMODE_STATUS", String.valueOf(mUiModeMgr.isNightMode(Display.DEFAULT_DISPLAY)));
     }
 
     private final IBinder mService = new IFirewallService.Stub() {
