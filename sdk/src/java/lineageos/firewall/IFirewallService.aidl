@@ -16,6 +16,8 @@
 
 package lineageos.firewall;
 
+import lineageos.firewall.DomainListInfo;
+
 /** @hide */
 interface IFirewallService {
 
@@ -40,6 +42,14 @@ interface IFirewallService {
     void clearDomainList();
 
     void addDomainListToList(in List<String> domains);
+
+    List<String> getManualDomains();
+
+    void addDomainList(in DomainListInfo info, in List<String> domains);
+
+    void removeDomainList(String id);
+
+    List<DomainListInfo> getDomainLists();
 
     void addAppToList(String app);
 

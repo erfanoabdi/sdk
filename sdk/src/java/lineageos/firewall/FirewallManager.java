@@ -161,6 +161,38 @@ public class FirewallManager {
         }
     }
 
+    public List<String> getManualDomains() {
+        try {
+            return sService.getManualDomains();
+        } catch (RemoteException e) {
+            throw e.rethrowFromSystemServer();
+        }
+    }
+
+    public void addDomainList(DomainListInfo info, List<String> domains) {
+        try {
+            sService.addDomainList(info, domains);
+        } catch (RemoteException e) {
+            throw e.rethrowFromSystemServer();
+        }
+    }
+
+    public void removeDomainList(String id) {
+        try {
+            sService.removeDomainList(id);
+        } catch (RemoteException e) {
+            throw e.rethrowFromSystemServer();
+        }
+    }
+
+    public List<DomainListInfo> getDomainLists() {
+        try {
+            return sService.getDomainLists();
+        } catch (RemoteException e) {
+            throw e.rethrowFromSystemServer();
+        }
+    }
+
     public void addAppToList(String app) {
         try {
             sService.addAppToList(app);

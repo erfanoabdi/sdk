@@ -77,6 +77,7 @@ import java.util.Set;
 
 import libcore.io.IoUtils;
 import lineageos.app.LineageContextConstants;
+import lineageos.firewall.DomainListInfo;
 import lineageos.firewall.IFirewallService;
 
 import static android.provider.Settings.Global.PRIVATE_DNS_DEFAULT_MODE;
@@ -94,7 +95,15 @@ public class FirewallService extends LineageSystemService {
     private static final String APPS_FILE_NAME = "list-restrictedapps.xml";
     private static final String TAG_LISTED_APPS = "list-restrictedapps";
     private static final String TAG_APP = "app";
+    private static final String DOMAIN_LISTS_FILE_NAME = "list-domainlists.xml";
+    private static final String TAG_LISTED_DOMAIN_LISTS = "list-domainlists";
+    private static final String TAG_DOMAIN_LIST = "domain-list";
     private static final String ATTRIBUTE_NAME = "name";
+    private static final String ATTRIBUTE_ID = "id";
+    private static final String ATTRIBUTE_TITLE = "title";
+    private static final String ATTRIBUTE_URL = "url";
+    private static final String ATTRIBUTE_VERSION = "version";
+    private static final String ATTRIBUTE_BLACKLIST = "isBlacklist";
     private static final String COMMON_DNS = "1.1.1.1";
 
     private int mUserId;
@@ -105,14 +114,17 @@ public class FirewallService extends LineageSystemService {
 
     private AtomicFile mDomainsFile;
     private AtomicFile mAppsFile;
+    private AtomicFile mDomainListsFile;
     private final FirewallHandler mHandler;
 
     private HttpWebServer mHttpWebServer;
     private HttpsWebServer mHttpsWebServer;
     private boolean isWebServerEnabled;
 
-    private final ArrayList<String> mDomainsList = new ArrayList<String>();
+    private final ArrayList<String> mManualDomainsList = new ArrayList<String>();
     private final ArrayList<String> mAppsList = new ArrayList<String>();
+    private final ArrayList<DomainListInfo> mDomainListInfoList = new ArrayList<DomainListInfo>();
+    private final ArrayMap<String, List<String>> mDomainListDomains = new ArrayMap<>();
 
     public FirewallService(Context context) {
         super(context);
@@ -143,6 +155,7 @@ public class FirewallService extends LineageSystemService {
             mUserId = userHandle;
             mHandler.sendEmptyMessage(FirewallHandler.MSG_INIT_DOMAINS);
             mHandler.sendEmptyMessage(FirewallHandler.MSG_INIT_APPS);
+            mHandler.sendEmptyMessage(FirewallHandler.MSG_INIT_DOMAIN_LISTS);
             mHandler.sendEmptyMessage(FirewallHandler.MSG_WRITE_CONF);
         }
     }
@@ -171,6 +184,7 @@ public class FirewallService extends LineageSystemService {
             mUserId = userHandle;
             mHandler.sendEmptyMessage(FirewallHandler.MSG_INIT_DOMAINS);
             mHandler.sendEmptyMessage(FirewallHandler.MSG_INIT_APPS);
+            mHandler.sendEmptyMessage(FirewallHandler.MSG_INIT_DOMAIN_LISTS);
             mHandler.sendEmptyMessage(FirewallHandler.MSG_WRITE_CONF);
         }
     }
@@ -183,6 +197,7 @@ public class FirewallService extends LineageSystemService {
             mUserId = ActivityManager.getCurrentUser();
             mHandler.sendEmptyMessage(FirewallHandler.MSG_INIT_DOMAINS);
             mHandler.sendEmptyMessage(FirewallHandler.MSG_INIT_APPS);
+            mHandler.sendEmptyMessage(FirewallHandler.MSG_INIT_DOMAIN_LISTS);
             mHandler.sendEmptyMessage(FirewallHandler.MSG_WRITE_CONF);
         }
     }
@@ -221,7 +236,7 @@ public class FirewallService extends LineageSystemService {
 
     private void readDomainsState() {
         if (DEBUG_FIREWALL) Slog.v(TAG, "readDomainsState()");
-        mDomainsList.clear();
+        mManualDomainsList.clear();
         try (FileInputStream in = mDomainsFile.openRead()) {
             XmlPullParser parser = Xml.newPullParser();
             parser.setInput(in, null);
@@ -266,7 +281,7 @@ public class FirewallService extends LineageSystemService {
             }
             if (parser.getName().equals(TAG_DOMAIN)) {
                 String domainName = parser.getAttributeValue(null, ATTRIBUTE_NAME);
-                mDomainsList.add(domainName);
+                mManualDomainsList.add(domainName);
                 if (DEBUG_FIREWALL) Slog.v(TAG, "parseDomains(): domainName=" + domainName);
             }
         }
@@ -299,7 +314,7 @@ public class FirewallService extends LineageSystemService {
 
     private void serializeDomains(XmlSerializer serializer) throws IOException {
         serializer.startTag(null, TAG_LISTED_DOMAINS);
-        ArrayList<String> newDomainsList = new ArrayList<>(mDomainsList);
+        ArrayList<String> newDomainsList = new ArrayList<>(mManualDomainsList);
         for (String domain : newDomainsList) {
             serializer.startTag(null, TAG_DOMAIN);
             serializer.attribute(null, ATTRIBUTE_NAME, domain);
@@ -409,16 +424,203 @@ public class FirewallService extends LineageSystemService {
         serializer.endTag(null, TAG_LISTED_APPS);
     }
 
+    private void initDomainLists() {
+        if (DEBUG_FIREWALL) Slog.v(TAG, "initDomainLists(" + mUserId + ")");
+        mDomainListsFile = new AtomicFile(getDomainListsFile());
+        readDomainListsState();
+    }
+
+    private File getDomainListsFile() {
+        File file = new File(Environment.getDataSystemCeDirectory(mUserId), DOMAIN_LISTS_FILE_NAME);
+        if (DEBUG_FIREWALL) Slog.v(TAG, "getDomainListsFile(): " + file.getAbsolutePath());
+        return file;
+    }
+
+    private void readDomainListsState() {
+        if (DEBUG_FIREWALL) Slog.v(TAG, "readDomainListsState()");
+        mDomainListInfoList.clear();
+        mDomainListDomains.clear();
+        try (FileInputStream in = mDomainListsFile.openRead()) {
+            XmlPullParser parser = Xml.newPullParser();
+            parser.setInput(in, null);
+            parseDomainListsXml(parser);
+            if (DEBUG_FIREWALL) Slog.v(TAG, "Read " + DOMAIN_LISTS_FILE_NAME + " successfully");
+        } catch (FileNotFoundException e) {
+            if (DEBUG_FIREWALL) Slog.v(TAG, DOMAIN_LISTS_FILE_NAME + " not found");
+            Slog.i(TAG, DOMAIN_LISTS_FILE_NAME + " not found");
+        } catch (XmlPullParserException | IOException e) {
+            throw new IllegalStateException("Failed to parse " + DOMAIN_LISTS_FILE_NAME + ": " + mDomainListsFile, e);
+        }
+    }
+
+    private void parseDomainListsXml(XmlPullParser parser) throws IOException,
+            XmlPullParserException {
+        int type;
+        int depth;
+        int innerDepth = parser.getDepth() + 1;
+        while ((type = parser.next()) != XmlPullParser.END_DOCUMENT
+                && ((depth = parser.getDepth()) >= innerDepth || type != XmlPullParser.END_TAG)) {
+            if (depth > innerDepth || type != XmlPullParser.START_TAG) {
+                continue;
+            }
+            if (parser.getName().equals(TAG_LISTED_DOMAIN_LISTS)) {
+                parseDomainLists(parser);
+                return;
+            }
+        }
+        Slog.w(TAG, "Missing <" + TAG_LISTED_DOMAIN_LISTS + "> in " + DOMAIN_LISTS_FILE_NAME);
+    }
+
+    private void parseDomainLists(XmlPullParser parser) throws IOException,
+            XmlPullParserException {
+        int type;
+        int depth;
+        int outerDepth = parser.getDepth() + 1;
+        while ((type = parser.next()) != XmlPullParser.END_DOCUMENT
+                && ((depth = parser.getDepth()) >= outerDepth || type != XmlPullParser.END_TAG)) {
+            if (depth > outerDepth || type != XmlPullParser.START_TAG) {
+                continue;
+            }
+            if (parser.getName().equals(TAG_DOMAIN_LIST)) {
+                DomainListInfo info = new DomainListInfo();
+                info.id = parser.getAttributeValue(null, ATTRIBUTE_ID);
+                info.title = parser.getAttributeValue(null, ATTRIBUTE_TITLE);
+                info.url = parser.getAttributeValue(null, ATTRIBUTE_URL);
+                String versionStr = parser.getAttributeValue(null, ATTRIBUTE_VERSION);
+                try {
+                    info.version = Double.parseDouble(versionStr);
+                } catch (NumberFormatException e) {
+                    info.version = 0.0;
+                }
+                info.isBlacklist = Boolean.parseBoolean(
+                        parser.getAttributeValue(null, ATTRIBUTE_BLACKLIST));
+                List<String> domains = parseDomainListDomains(parser);
+                mDomainListInfoList.add(info);
+                mDomainListDomains.put(info.id, domains);
+                if (DEBUG_FIREWALL) Slog.v(TAG, "parseDomainLists(): id=" + info.id);
+            }
+        }
+    }
+
+    private List<String> parseDomainListDomains(XmlPullParser parser) throws IOException,
+            XmlPullParserException {
+        List<String> domains = new ArrayList<>();
+        int type;
+        int depth;
+        int innerDepth = parser.getDepth() + 1;
+        while ((type = parser.next()) != XmlPullParser.END_DOCUMENT
+                && ((depth = parser.getDepth()) >= innerDepth || type != XmlPullParser.END_TAG)) {
+            if (depth > innerDepth || type != XmlPullParser.START_TAG) {
+                continue;
+            }
+            if (parser.getName().equals(TAG_DOMAIN)) {
+                String domainName = parser.getAttributeValue(null, ATTRIBUTE_NAME);
+                domains.add(domainName);
+            }
+        }
+        return domains;
+    }
+
+    private void writeDomainListsState() {
+        if (DEBUG_FIREWALL) Slog.v(TAG, "writeDomainListsState()");
+
+        FileOutputStream out = null;
+        try {
+            out = mDomainListsFile.startWrite();
+            XmlSerializer serializer = Xml.newSerializer();
+            serializer.setOutput(out, StandardCharsets.UTF_8.name());
+            serializer.setFeature(
+                    "http://xmlpull.org/v1/doc/features.html#indent-output", true);
+            serializer.startDocument(null, true);
+            serializeDomainLists(serializer);
+            serializer.endDocument();
+            mDomainListsFile.finishWrite(out);
+            if (DEBUG_FIREWALL) Slog.v(TAG, "Wrote " + DOMAIN_LISTS_FILE_NAME + " successfully");
+        } catch (IllegalArgumentException | IllegalStateException | IOException e) {
+            Slog.wtf(TAG, "Failed to write " + DOMAIN_LISTS_FILE_NAME + ", restoring backup", e);
+            if (out != null) {
+                mDomainListsFile.failWrite(out);
+            }
+        } finally {
+            IoUtils.closeQuietly(out);
+        }
+    }
+
+    private void serializeDomainLists(XmlSerializer serializer) throws IOException {
+        serializer.startTag(null, TAG_LISTED_DOMAIN_LISTS);
+        for (DomainListInfo info : new ArrayList<>(mDomainListInfoList)) {
+            serializer.startTag(null, TAG_DOMAIN_LIST);
+            serializer.attribute(null, ATTRIBUTE_ID, info.id);
+            serializer.attribute(null, ATTRIBUTE_TITLE, info.title);
+            serializer.attribute(null, ATTRIBUTE_URL, info.url);
+            serializer.attribute(null, ATTRIBUTE_VERSION, String.valueOf(info.version));
+            serializer.attribute(null, ATTRIBUTE_BLACKLIST, String.valueOf(info.isBlacklist));
+            List<String> domains = mDomainListDomains.get(info.id);
+            if (domains != null) {
+                for (String domain : domains) {
+                    serializer.startTag(null, TAG_DOMAIN);
+                    serializer.attribute(null, ATTRIBUTE_NAME, domain);
+                    serializer.endTag(null, TAG_DOMAIN);
+                }
+            }
+            serializer.endTag(null, TAG_DOMAIN_LIST);
+        }
+        serializer.endTag(null, TAG_LISTED_DOMAIN_LISTS);
+    }
+
+    private void addDomainList(DomainListInfo info, List<String> domains) {
+        if (DEBUG_FIREWALL) Slog.v(TAG, "addDomainList id:" + info.id);
+        for (DomainListInfo existing : mDomainListInfoList) {
+            if (existing.id.equals(info.id)) {
+                if (DEBUG_FIREWALL) Slog.v(TAG, "addDomainList: id already exists, skipping");
+                return;
+            }
+        }
+        mDomainListInfoList.add(info);
+        mDomainListDomains.put(info.id, new ArrayList<>(domains));
+        mHandler.sendEmptyMessage(FirewallHandler.MSG_WRITE_CONF);
+        mHandler.sendEmptyMessage(FirewallHandler.MSG_WRITE_DOMAIN_LISTS_STATE);
+    }
+
+    private void removeDomainList(String id) {
+        if (DEBUG_FIREWALL) Slog.v(TAG, "removeDomainList id:" + id);
+        DomainListInfo target = null;
+        for (DomainListInfo info : mDomainListInfoList) {
+            if (info.id.equals(id)) {
+                target = info;
+                break;
+            }
+        }
+        if (target == null) {
+            if (DEBUG_FIREWALL) Slog.v(TAG, "removeDomainList: id not found");
+            return;
+        }
+        mDomainListDomains.remove(id);
+        mDomainListInfoList.remove(target);
+        mHandler.sendEmptyMessage(FirewallHandler.MSG_WRITE_CONF);
+        mHandler.sendEmptyMessage(FirewallHandler.MSG_WRITE_DOMAIN_LISTS_STATE);
+    }
+
+    private List<DomainListInfo> getDomainLists() {
+        return new ArrayList<>(mDomainListInfoList);
+    }
+
     private void resetDnsConf() {
         ArrayList<String> confLines = new ArrayList<String>();
-        ArrayList<String> newDomainsList = new ArrayList<>(mDomainsList);
         boolean blacklist = isBlacklistMode();
+        ArrayList<String> allDomains = new ArrayList<>(mManualDomainsList);
+        for (DomainListInfo info : mDomainListInfoList) {
+            if (info.isBlacklist == blacklist) {
+                List<String> listDomains = mDomainListDomains.get(info.id);
+                if (listDomains != null) allDomains.addAll(listDomains);
+            }
+        }
         File dnsmasqDir = new File(Environment.getDataSystemCeDirectory(0), "dnsmasq");
         if (!dnsmasqDir.exists() && !dnsmasqDir.mkdirs())
             Slog.e(TAG, "Error while creating dnsmasq directory: " + dnsmasqDir);
         confLines.add("# Volla firewall fonfiguration file for dnsmasq.");
-        if (mDomainsList.size() > 0) {
-            for (String domain : newDomainsList) {
+        if (!allDomains.isEmpty()) {
+            for (String domain : allDomains) {
                 if (blacklist)
                     confLines.add("address=/" + domain + "/127.0.0.1");
                 else
@@ -484,37 +686,41 @@ public class FirewallService extends LineageSystemService {
 
     private void addDomainToList(String domain) {
         if (DEBUG_FIREWALL) Slog.v(TAG, "addDomainToList domain:" + domain);
-        if (!mDomainsList.contains(domain)) {
-            mDomainsList.add(domain);
+        if (!mManualDomainsList.contains(domain)) {
+            mManualDomainsList.add(domain);
             mHandler.sendEmptyMessage(FirewallHandler.MSG_WRITE_STATE);
             mHandler.sendEmptyMessage(FirewallHandler.MSG_WRITE_CONF);
         }
     }
 
     private void removeDomainFromList(String domain) {
-        if (mDomainsList.contains(domain)) {
-            mDomainsList.remove(domain);
+        if (mManualDomainsList.contains(domain)) {
+            mManualDomainsList.remove(domain);
             mHandler.sendEmptyMessage(FirewallHandler.MSG_WRITE_STATE);
             mHandler.sendEmptyMessage(FirewallHandler.MSG_WRITE_CONF);
         }
     }
 
     public boolean isDomainOnList(String domain) {
-        return mDomainsList.contains(domain);
+        return mManualDomainsList.contains(domain);
     }
 
     private List<String> getDomainsList() {
-        return mDomainsList;
+        return mManualDomainsList;
+    }
+
+    private List<String> getManualDomains() {
+        return mManualDomainsList;
     }
 
     private int getDomainsListCount() {
-        if (DEBUG_FIREWALL) Slog.v(TAG, "Number of domains on list: " + mDomainsList.size());
-        return mDomainsList.size();
+        if (DEBUG_FIREWALL) Slog.v(TAG, "Number of domains on list: " + mManualDomainsList.size());
+        return mManualDomainsList.size();
     }
 
     private void clearDomainList() {
-        if (!mDomainsList.isEmpty()) {
-            mDomainsList.clear();
+        if (!mManualDomainsList.isEmpty()) {
+            mManualDomainsList.clear();
             mHandler.sendEmptyMessage(FirewallHandler.MSG_WRITE_STATE);
             mHandler.sendEmptyMessage(FirewallHandler.MSG_WRITE_CONF);
         }
@@ -522,7 +728,7 @@ public class FirewallService extends LineageSystemService {
 
     private void addDomainListToList(List<String> domains) {
         if (!domains.isEmpty()) {
-            mDomainsList.addAll(domains);
+            mManualDomainsList.addAll(domains);
             mHandler.sendEmptyMessage(FirewallHandler.MSG_WRITE_STATE);
             mHandler.sendEmptyMessage(FirewallHandler.MSG_WRITE_CONF);
         }
@@ -635,6 +841,26 @@ public class FirewallService extends LineageSystemService {
         }
 
         @Override
+        public List<String> getManualDomains() {
+            return FirewallService.this.getManualDomains();
+        }
+
+        @Override
+        public void addDomainList(lineageos.firewall.DomainListInfo info, List<String> domains) {
+            FirewallService.this.addDomainList(info, domains);
+        }
+
+        @Override
+        public void removeDomainList(String id) {
+            FirewallService.this.removeDomainList(id);
+        }
+
+        @Override
+        public List<lineageos.firewall.DomainListInfo> getDomainLists() {
+            return FirewallService.this.getDomainLists();
+        }
+
+        @Override
         public void addAppToList(String app) {
             FirewallService.this.addAppToList(app);
         }
@@ -668,6 +894,8 @@ public class FirewallService extends LineageSystemService {
         public static final int MSG_INIT_APPS = 3;
         public static final int MSG_WRITE_APPS_STATE = 4;
         public static final int MSG_RESET_RESTRICTED_APPS = 5;
+        public static final int MSG_INIT_DOMAIN_LISTS = 6;
+        public static final int MSG_WRITE_DOMAIN_LISTS_STATE = 7;
 
         public FirewallHandler(Looper looper) {
             super(looper);
@@ -693,6 +921,12 @@ public class FirewallService extends LineageSystemService {
                     break;
                 case MSG_RESET_RESTRICTED_APPS:
                     resetRestrictedApps();
+                    break;
+                case MSG_INIT_DOMAIN_LISTS:
+                    initDomainLists();
+                    break;
+                case MSG_WRITE_DOMAIN_LISTS_STATE:
+                    writeDomainListsState();
                     break;
                 default:
                     Slog.w(TAG, "Unknown message:" + msg.what);
