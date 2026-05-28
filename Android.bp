@@ -92,6 +92,7 @@ java_defaults {
         "vendor.lineage.livedisplay-V1-java",
         "vendor.lineage.touch-V1-java",
         "org.nanohttpd",
+        "bouncycastle-repackaged-unbundled",
     ],
 }
 
