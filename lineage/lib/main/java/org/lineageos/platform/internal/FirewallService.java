@@ -1008,6 +1008,12 @@ public class FirewallService extends LineageSystemService {
                 confLines.add("address=/#/127.0.0.1");
             }
         }
+        // Always block known DoH providers so apps cannot bypass domain-level
+        // blocking by switching to an encrypted resolver. Applied in all modes.
+        for (String doh : KnownDohDomains.ALL) {
+            confLines.add("address=/" + doh + "/127.0.0.1");
+        }
+
         try {
             Files.write(Paths.get(dnsmasqDir.getAbsolutePath() + "/dns.conf"),
               confLines, StandardCharsets.UTF_8);
