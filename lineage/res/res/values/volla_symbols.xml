@@ -11,4 +11,12 @@
     <java-symbol type="string" name="firewall_text" />
     <java-symbol type="raw" name="firewall" />
 
+    <java-symbol type="string" name="firewall_notif_channel_name" />
+    <java-symbol type="string" name="firewall_notif_channel_desc" />
+    <java-symbol type="string" name="firewall_notif_title" />
+    <java-symbol type="string" name="firewall_notif_text" />
+    <java-symbol type="string" name="firewall_notif_action_deny" />
+    <java-symbol type="string" name="firewall_notif_action_allow_temp" />
+    <java-symbol type="string" name="firewall_notif_action_allow_perm" />
+
 </resources>

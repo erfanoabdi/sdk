@@ -16,6 +16,7 @@
 
 package lineageos.firewall;
 
+import lineageos.firewall.AllowedDomain;
 import lineageos.firewall.DomainListInfo;
 
 /** @hide */
@@ -60,5 +61,13 @@ interface IFirewallService {
     int getAppsListCount();
 
     List<String> getAppsList();
+
+    void alertMode(boolean enable);
+
+    boolean isAlertMode();
+
+    List<AllowedDomain> getAllowedDomains();
+
+    void removeAllowedDomain(String name);
 
 }

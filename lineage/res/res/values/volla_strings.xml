@@ -2,4 +2,14 @@
 <resources xmlns:xliff="urn:oasis:names:tc:xliff:document:1.2">
     <string name="firewall_text">This website cannot be accessed while security mode is on.</string>
 
+    <!-- Firewall alert notification -->
+    <string name="firewall_notif_channel_name">Firewall Alerts</string>
+    <string name="firewall_notif_channel_desc">Notifies when an app tries to access a blocked domain</string>
+    <string name="firewall_notif_title">Firewall Alert</string>
+    <!-- %1$s = app name, %2$s = domain -->
+    <string name="firewall_notif_text"><xliff:g id="app_name" example="Chrome">%1$s</xliff:g> tried to access <xliff:g id="domain" example="example.com">%2$s</xliff:g></string>
+    <string name="firewall_notif_action_deny">Deny</string>
+    <string name="firewall_notif_action_allow_temp">Allow 5 min</string>
+    <string name="firewall_notif_action_allow_perm">Allow permanently</string>
+
 </resources>

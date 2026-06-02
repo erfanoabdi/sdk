@@ -19,6 +19,13 @@ package org.lineageos.platform.internal;
 import static android.net.NetworkPolicyManager.POLICY_REJECT_ALL;
 
 import android.app.ActivityManager;
+import android.app.Notification;
+import android.app.NotificationChannel;
+import android.app.NotificationManager;
+import android.app.PendingIntent;
+import android.graphics.Bitmap;
+import android.graphics.Canvas;
+import android.graphics.drawable.Drawable;
 import android.annotation.NonNull;
 import android.annotation.Nullable;
 import android.content.BroadcastReceiver;
@@ -134,7 +141,6 @@ import lineageos.firewall.IFirewallService;
 
 import static android.provider.Settings.Global.PRIVATE_DNS_DEFAULT_MODE;
 
-import fi.iki.elonen.NanoHTTPD;
 
 public class FirewallService extends LineageSystemService {
 
@@ -163,6 +169,20 @@ public class FirewallService extends LineageSystemService {
     private static final String CA_KEY_ALIAS = "volla_firewall_ca";
     private static final String CA_CERT_FILE = "firewall_ca.der";
     private static final long LEAF_CERT_TTL_MS = 3_600_000L;
+    private static final String PROP_ALERT_MODE  = "persist.volla.firewall.alertmode";
+    private static final String PKG_SYSTEM       = "android";
+    private static final String ALLOWED_FILE_NAME    = "list-allowed.xml";
+    private static final String TAG_ALLOWED_DOMAINS  = "list-allowed";
+    private static final String TAG_ALLOWED_DOMAIN   = "allowed-domain";
+    private static final String ATTRIBUTE_EXPIRY     = "expiry";
+    private static final long   ALLOW_TEMP_MS        = 5 * 60 * 1000L;
+    private static final String NOTIF_CHANNEL_ID     = "firewall_alerts";
+    private static final String ACTION_DENY          = "lineageos.firewall.DENY";
+    private static final String ACTION_ALLOW_TEMP    = "lineageos.firewall.ALLOW_TEMP";
+    private static final String ACTION_ALLOW_PERM    = "lineageos.firewall.ALLOW_PERM";
+    private static final String EXTRA_DOMAIN         = "domain";
+    private static final String EXTRA_PKG            = "pkg";
+    private static final String EXTRA_NOTIF_ID       = "notif_id";
     private static final AlgorithmIdentifier ECDSA_SHA256_ALG =
         new AlgorithmIdentifier(new ASN1ObjectIdentifier("1.2.840.10045.4.3.2"));
 
@@ -177,9 +197,13 @@ public class FirewallService extends LineageSystemService {
     private AtomicFile mDomainListsFile;
     private final FirewallHandler mHandler;
 
-    private HttpWebServer mHttpWebServer;
-    private HttpsWebServer mHttpsWebServer;
+    private TcpProxy mHttpProxy;
+    private TcpProxy mHttpsProxy;
     private boolean isWebServerEnabled;
+
+    private AtomicFile mAllowedFile;
+    private final ArrayMap<String, Long> mAllowedDomains = new ArrayMap<>();
+    private BroadcastReceiver mNotifActionReceiver;
 
     private final ArrayList<String> mManualDomainsList = new ArrayList<String>();
     private final ArrayList<String> mAppsList = new ArrayList<String>();
@@ -189,6 +213,7 @@ public class FirewallService extends LineageSystemService {
 
     private X509Certificate mCACert;
     private PrivateKey mCAPrivateKey;
+    private SSLContext mSSLContext;
     private final Object mCertLock = new Object();
     private final ArrayMap<String, LeafCertEntry> mLeafCertCache = new ArrayMap<>();
 
@@ -219,6 +244,10 @@ public class FirewallService extends LineageSystemService {
         if (!UserManager.get(mContext).isManagedProfile(userHandle)) {
             if (DEBUG_FIREWALL) Slog.v(TAG, "onUserUnlocking() is NOT ManagedProfile");
             mUserId = userHandle;
+            mAllowedFile = new AtomicFile(new File(
+                Environment.getDataSystemCeDirectory(mUserId), ALLOWED_FILE_NAME));
+            setupNotificationChannel();
+            registerNotifActionReceiver();
             initCA();
             if (isActivate()) {
                 SystemProperties.set("ctl.start", "volla.dnsmasq");
@@ -227,6 +256,7 @@ public class FirewallService extends LineageSystemService {
             mHandler.sendEmptyMessage(FirewallHandler.MSG_INIT_DOMAINS);
             mHandler.sendEmptyMessage(FirewallHandler.MSG_INIT_APPS);
             mHandler.sendEmptyMessage(FirewallHandler.MSG_INIT_DOMAIN_LISTS);
+            mHandler.sendEmptyMessage(FirewallHandler.MSG_INIT_ALLOWED);
             mHandler.sendEmptyMessage(FirewallHandler.MSG_WRITE_CONF);
         }
     }
@@ -307,19 +337,21 @@ public class FirewallService extends LineageSystemService {
     private void activateWebServer(boolean enable) {
         if (!isWebServerEnabled && enable) {
             try {
-                mHttpWebServer = new HttpWebServer();
-                mHttpWebServer.start();
-                mHttpsWebServer = new HttpsWebServer();
-                mHttpsWebServer.start();
+                mHttpProxy = new TcpProxy(80, null, this::getBlockedPage,
+                    this::onDomainBlocked, mPackageManager, this::isAllowed);
+                mHttpProxy.start();
+                mHttpsProxy = new TcpProxy(443, mSSLContext, this::getBlockedPage,
+                    this::onDomainBlocked, mPackageManager, this::isAllowed);
+                mHttpsProxy.start();
                 isWebServerEnabled = true;
             } catch (Exception e) {
                 e.printStackTrace();
             }
         } else if (isWebServerEnabled && !enable) {
-            if (mHttpWebServer != null)
-                mHttpWebServer.stop();
-            if (mHttpsWebServer != null)
-                mHttpsWebServer.stop();
+            if (mHttpProxy != null)
+                mHttpProxy.stop();
+            if (mHttpsProxy != null)
+                mHttpsProxy.stop();
             isWebServerEnabled = false;
         }
     }
@@ -389,6 +421,8 @@ public class FirewallService extends LineageSystemService {
                 Slog.i(TAG, "initCA: CA missing from user store, reinstalling: " + userCaFile);
                 installToSystemCaStore(mCACert);
             }
+            mSSLContext = SSLContext.getInstance("TLS");
+            mSSLContext.init(new KeyManager[]{new SNIKeyManager()}, null, null);
             Slog.i(TAG, "initCA: done, CA=" + mCACert.getSubjectDN()
                 + " valid until " + mCACert.getNotAfter());
         } catch (Exception e) {
@@ -951,13 +985,23 @@ public class FirewallService extends LineageSystemService {
         confLines.add("# Volla firewall fonfiguration file for dnsmasq.");
         if (!allDomains.isEmpty()) {
             for (String domain : allDomains) {
-                if (blacklist)
-                    confLines.add("address=/" + domain + "/127.0.0.1");
-                else
+                if (blacklist) {
+                    if (!isAllowed(domain))
+                        confLines.add("address=/" + domain + "/127.0.0.1");
+                } else {
                     confLines.add("server=/" + domain + "/" + COMMON_DNS);
+                }
             }
-            if (!blacklist)
+            if (!blacklist) {
+                // In whitelist mode, temporarily allowed domains need a server= line
+                // so the catch-all address=/#/127.0.0.1 doesn't block them.
+                for (int i = 0; i < mAllowedDomains.size(); i++) {
+                    String allowed = mAllowedDomains.keyAt(i);
+                    if (isAllowed(allowed) && !allDomains.contains(allowed))
+                        confLines.add("server=/" + allowed + "/" + COMMON_DNS);
+                }
                 confLines.add("address=/#/127.0.0.1");
+            }
         }
         try {
             Files.write(Paths.get(dnsmasqDir.getAbsolutePath() + "/dns.conf"),
@@ -1112,6 +1156,221 @@ public class FirewallService extends LineageSystemService {
                 .replace("DARKMODE_STATUS", String.valueOf(mUiModeMgr.isNightMode(Display.DEFAULT_DISPLAY)));
     }
 
+    // ── Alert mode ────────────────────────────────────────────────────────
+
+    private void setAlertMode(boolean enable) {
+        SystemProperties.set(PROP_ALERT_MODE, Boolean.toString(enable));
+    }
+
+    private boolean isAlertMode() {
+        return SystemProperties.getBoolean(PROP_ALERT_MODE, false);
+    }
+
+    // ── Allowed list ──────────────────────────────────────────────────────
+
+    private void initAllowedDomains() {
+        mAllowedDomains.clear();
+        if (mAllowedFile == null) return;
+        try (FileInputStream fis = mAllowedFile.openRead()) {
+            XmlPullParser parser = Xml.newPullParser();
+            parser.setInput(fis, StandardCharsets.UTF_8.name());
+            int type;
+            while ((type = parser.next()) != XmlPullParser.END_DOCUMENT) {
+                if (type == XmlPullParser.START_TAG && TAG_ALLOWED_DOMAIN.equals(parser.getName())) {
+                    String name = parser.getAttributeValue(null, ATTRIBUTE_NAME);
+                    long expiry = Long.parseLong(parser.getAttributeValue(null, ATTRIBUTE_EXPIRY));
+                    if (name != null && (expiry == -1 || System.currentTimeMillis() < expiry))
+                        mAllowedDomains.put(name, expiry);
+                }
+            }
+        } catch (FileNotFoundException ignored) {
+        } catch (Exception e) {
+            Slog.e(TAG, "Failed to read allowed list", e);
+        }
+        Slog.i(TAG, "initAllowedDomains: loaded " + mAllowedDomains.size() + " entries");
+    }
+
+    private void writeAllowedDomains() {
+        if (mAllowedFile == null) return;
+        FileOutputStream fos = null;
+        try {
+            fos = mAllowedFile.startWrite();
+            XmlSerializer out = Xml.newSerializer();
+            out.setOutput(fos, StandardCharsets.UTF_8.name());
+            out.startDocument(null, true);
+            out.startTag(null, TAG_ALLOWED_DOMAINS);
+            for (int i = 0; i < mAllowedDomains.size(); i++) {
+                out.startTag(null, TAG_ALLOWED_DOMAIN);
+                out.attribute(null, ATTRIBUTE_NAME, mAllowedDomains.keyAt(i));
+                out.attribute(null, ATTRIBUTE_EXPIRY, Long.toString(mAllowedDomains.valueAt(i)));
+                out.endTag(null, TAG_ALLOWED_DOMAIN);
+            }
+            out.endTag(null, TAG_ALLOWED_DOMAINS);
+            out.endDocument();
+            mAllowedFile.finishWrite(fos);
+        } catch (Exception e) {
+            mAllowedFile.failWrite(fos);
+            Slog.e(TAG, "Failed to write allowed list", e);
+        }
+    }
+
+    private boolean isAllowed(String domain) {
+        Long expiry = mAllowedDomains.get(domain);
+        if (expiry == null) return false;
+        return expiry == -1 || System.currentTimeMillis() < expiry;
+    }
+
+    private List<lineageos.firewall.AllowedDomain> getAllowedDomainsList() {
+        List<lineageos.firewall.AllowedDomain> result = new ArrayList<>();
+        for (int i = 0; i < mAllowedDomains.size(); i++) {
+            result.add(new lineageos.firewall.AllowedDomain(
+                mAllowedDomains.keyAt(i), mAllowedDomains.valueAt(i)));
+        }
+        return result;
+    }
+
+    private void removeAllowedDomain(String name) {
+        if (mAllowedDomains.remove(name) != null) {
+            mHandler.sendEmptyMessage(FirewallHandler.MSG_WRITE_ALLOWED);
+            mHandler.sendEmptyMessage(FirewallHandler.MSG_WRITE_CONF);
+        }
+    }
+
+    // Use a method reference so the lambda body (field initializer) does not directly
+    // reference mHandler — a blank-final field only assigned in the constructor.
+    // mHandler is accessed inside checkExpiredAllowedDomains() at call time, which is safe.
+    private final Runnable mExpireRunnable = this::checkExpiredAllowedDomains;
+
+    private void checkExpiredAllowedDomains() {
+        long now = System.currentTimeMillis();
+        boolean changed = false;
+        for (int i = mAllowedDomains.size() - 1; i >= 0; i--) {
+            long exp = mAllowedDomains.valueAt(i);
+            if (exp != -1 && now >= exp) {
+                mAllowedDomains.removeAt(i);
+                changed = true;
+            }
+        }
+        if (changed) {
+            writeAllowedDomains();
+            mHandler.sendEmptyMessage(FirewallHandler.MSG_WRITE_CONF);
+        }
+    }
+
+    // ── Notifications ─────────────────────────────────────────────────────
+
+    private void setupNotificationChannel() {
+        NotificationManager nm = mContext.getSystemService(NotificationManager.class);
+        if (nm == null) return;
+        NotificationChannel ch = new NotificationChannel(
+            NOTIF_CHANNEL_ID,
+            mContext.getString(org.lineageos.platform.internal.R.string.firewall_notif_channel_name),
+            NotificationManager.IMPORTANCE_HIGH);
+        ch.setDescription(mContext.getString(
+            org.lineageos.platform.internal.R.string.firewall_notif_channel_desc));
+        nm.createNotificationChannel(ch);
+    }
+
+    private void registerNotifActionReceiver() {
+        if (mNotifActionReceiver != null) return;
+        mNotifActionReceiver = new BroadcastReceiver() {
+            @Override
+            public void onReceive(Context context, Intent intent) {
+                String action = intent.getAction();
+                String domain = intent.getStringExtra(EXTRA_DOMAIN);
+                int notifId = intent.getIntExtra(EXTRA_NOTIF_ID, 0);
+                if (domain == null || action == null) return;
+
+                NotificationManager nm = mContext.getSystemService(NotificationManager.class);
+                if (nm != null) nm.cancel(notifId);
+
+                if (ACTION_ALLOW_TEMP.equals(action)) {
+                    long expiry = System.currentTimeMillis() + ALLOW_TEMP_MS;
+                    mAllowedDomains.put(domain, expiry);
+                    writeAllowedDomains();
+                    mHandler.sendEmptyMessage(FirewallHandler.MSG_WRITE_CONF);
+                    mHandler.removeCallbacks(mExpireRunnable);
+                    mHandler.postDelayed(mExpireRunnable, ALLOW_TEMP_MS + 1000);
+                } else if (ACTION_ALLOW_PERM.equals(action)) {
+                    mAllowedDomains.put(domain, -1L);
+                    writeAllowedDomains();
+                    mHandler.sendEmptyMessage(FirewallHandler.MSG_WRITE_CONF);
+                }
+                // ACTION_DENY: notification already cancelled above, nothing else to do
+            }
+        };
+        IntentFilter filter = new IntentFilter();
+        filter.addAction(ACTION_DENY);
+        filter.addAction(ACTION_ALLOW_TEMP);
+        filter.addAction(ACTION_ALLOW_PERM);
+        mContext.registerReceiver(mNotifActionReceiver, filter, Context.RECEIVER_NOT_EXPORTED);
+    }
+
+    void onDomainBlocked(String domain, int uid, String pkg, String appName) {
+        if (!isAlertMode()) return;
+        int notifId = domain.hashCode();
+
+        // Set package="android" to make the intent explicit — bypasses the
+        // AOSP protected-broadcast check for uid=1000 sending implicit broadcasts.
+        Intent denyIntent = new Intent(ACTION_DENY).setPackage(PKG_SYSTEM)
+            .putExtra(EXTRA_DOMAIN, domain).putExtra(EXTRA_NOTIF_ID, notifId);
+        Intent allowTmpIntent = new Intent(ACTION_ALLOW_TEMP).setPackage(PKG_SYSTEM)
+            .putExtra(EXTRA_DOMAIN, domain).putExtra(EXTRA_PKG, pkg)
+            .putExtra(EXTRA_NOTIF_ID, notifId);
+        Intent allowPermIntent = new Intent(ACTION_ALLOW_PERM).setPackage(PKG_SYSTEM)
+            .putExtra(EXTRA_DOMAIN, domain).putExtra(EXTRA_PKG, pkg)
+            .putExtra(EXTRA_NOTIF_ID, notifId);
+
+        int flags = PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE;
+        PendingIntent denyPi     = PendingIntent.getBroadcast(mContext, notifId,     denyIntent,     flags);
+        PendingIntent allowTmpPi = PendingIntent.getBroadcast(mContext, notifId + 1, allowTmpIntent, flags);
+        PendingIntent allowPermPi = PendingIntent.getBroadcast(mContext, notifId + 2, allowPermIntent, flags);
+
+        Notification.Builder builder = new Notification.Builder(mContext, NOTIF_CHANNEL_ID)
+            .setSmallIcon(android.R.drawable.ic_dialog_alert)
+            .setContentTitle(mContext.getString(
+                org.lineageos.platform.internal.R.string.firewall_notif_title))
+            .setContentText(mContext.getString(
+                org.lineageos.platform.internal.R.string.firewall_notif_text, appName, domain))
+            .setAutoCancel(true)
+            .setTimeoutAfter(10_000)
+            .setVibrate(new long[]{0, 300, 100, 300})
+            .addAction(new Notification.Action.Builder(null, mContext.getString(
+                org.lineageos.platform.internal.R.string.firewall_notif_action_deny), denyPi).build())
+            .addAction(new Notification.Action.Builder(null, mContext.getString(
+                org.lineageos.platform.internal.R.string.firewall_notif_action_allow_temp), allowTmpPi).build())
+            .addAction(new Notification.Action.Builder(null, mContext.getString(
+                org.lineageos.platform.internal.R.string.firewall_notif_action_allow_perm), allowPermPi).build());
+
+        if (pkg != null) {
+            try {
+                Drawable d = mPackageManager.getApplicationIcon(pkg);
+                Bitmap icon = drawableToBitmap(d);
+                builder.setLargeIcon(icon);
+            } catch (Exception ignored) {}
+        }
+
+        NotificationManager nm = mContext.getSystemService(NotificationManager.class);
+        if (nm != null) {
+            nm.cancel(notifId);
+            nm.notify(notifId, builder.build());
+        }
+    }
+
+    private static Bitmap drawableToBitmap(Drawable drawable) {
+        if (drawable instanceof android.graphics.drawable.BitmapDrawable) {
+            Bitmap bm = ((android.graphics.drawable.BitmapDrawable) drawable).getBitmap();
+            if (bm != null) return bm;
+        }
+        int w = Math.max(drawable.getIntrinsicWidth(), 1);
+        int h = Math.max(drawable.getIntrinsicHeight(), 1);
+        Bitmap bm = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888);
+        Canvas canvas = new Canvas(bm);
+        drawable.setBounds(0, 0, w, h);
+        drawable.draw(canvas);
+        return bm;
+    }
+
     private final IBinder mService = new IFirewallService.Stub() {
         @Override
         public void activate(boolean enable) {
@@ -1214,6 +1473,26 @@ public class FirewallService extends LineageSystemService {
         public List<String> getAppsList() {
             return FirewallService.this.getAppsList();
         }
+
+        @Override
+        public void alertMode(boolean enable) {
+            FirewallService.this.setAlertMode(enable);
+        }
+
+        @Override
+        public boolean isAlertMode() {
+            return FirewallService.this.isAlertMode();
+        }
+
+        @Override
+        public List<lineageos.firewall.AllowedDomain> getAllowedDomains() {
+            return FirewallService.this.getAllowedDomainsList();
+        }
+
+        @Override
+        public void removeAllowedDomain(String name) {
+            FirewallService.this.removeAllowedDomain(name);
+        }
     };
 
     private class FirewallHandler extends Handler {
@@ -1226,6 +1505,8 @@ public class FirewallService extends LineageSystemService {
         public static final int MSG_RESET_RESTRICTED_APPS = 5;
         public static final int MSG_INIT_DOMAIN_LISTS = 6;
         public static final int MSG_WRITE_DOMAIN_LISTS_STATE = 7;
+        public static final int MSG_INIT_ALLOWED = 8;
+        public static final int MSG_WRITE_ALLOWED = 9;
 
         public FirewallHandler(Looper looper) {
             super(looper);
@@ -1258,6 +1539,12 @@ public class FirewallService extends LineageSystemService {
                 case MSG_WRITE_DOMAIN_LISTS_STATE:
                     writeDomainListsState();
                     break;
+                case MSG_INIT_ALLOWED:
+                    initAllowedDomains();
+                    break;
+                case MSG_WRITE_ALLOWED:
+                    writeAllowedDomains();
+                    break;
                 default:
                     Slog.w(TAG, "Unknown message:" + msg.what);
             }
@@ -1281,15 +1568,22 @@ public class FirewallService extends LineageSystemService {
         @Override
         public String chooseEngineServerAlias(String keyType,
                 java.security.Principal[] issuers, javax.net.ssl.SSLEngine engine) {
-            String sni = extractSNI(engine.getHandshakeSession());
+            // Prefer the SNI pre-parsed from the raw ClientHello bytes (set by TcpProxy
+            // via ThreadLocal). Conscrypt's getRequestedServerNames() is unreliable in the
+            // bridge setup and may return null even when the ClientHello contains SNI.
+            String sni = TcpProxy.sBridgeSni.get();
+            if (sni != null) return sni;
+            sni = extractSNI(engine.getHandshakeSession());
             return sni != null ? sni : "blocked.local";
         }
 
         @Override
         public String chooseServerAlias(String keyType, java.security.Principal[] issuers,
                 java.net.Socket socket) {
+            String sni = TcpProxy.sBridgeSni.get();
+            if (sni != null) return sni;
             if (socket instanceof SSLSocket) {
-                String sni = extractSNI(((SSLSocket) socket).getHandshakeSession());
+                sni = extractSNI(((SSLSocket) socket).getHandshakeSession());
                 if (sni != null) return sni;
             }
             return "blocked.local";
@@ -1317,32 +1611,5 @@ public class FirewallService extends LineageSystemService {
                 java.net.Socket s) { return null; }
     }
 
-    public class HttpWebServer extends NanoHTTPD {
-        public HttpWebServer() {
-            super(80);
-        }
 
-        @Override
-        public Response serve(IHTTPSession session) {
-            return newFixedLengthResponse(getBlockedPage());
-        }
-    }
-
-    public class HttpsWebServer extends NanoHTTPD {
-        public HttpsWebServer() {
-            super(443);
-            try {
-                SSLContext sslContext = SSLContext.getInstance("TLS");
-                sslContext.init(new KeyManager[]{new SNIKeyManager()}, null, null);
-                makeSecure(sslContext.getServerSocketFactory(), null);
-            } catch (Exception e) {
-                Slog.e(TAG, "Failed to create HTTPS server", e);
-            }
-        }
-
-        @Override
-        public Response serve(IHTTPSession session) {
-            return newFixedLengthResponse(getBlockedPage());
-        }
-    }
 }

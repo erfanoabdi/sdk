@@ -232,4 +232,36 @@ public class FirewallManager {
             throw e.rethrowFromSystemServer();
         }
     }
+
+    public void alertMode(boolean enable) {
+        try {
+            sService.alertMode(enable);
+        } catch (RemoteException e) {
+            throw e.rethrowFromSystemServer();
+        }
+    }
+
+    public boolean isAlertMode() {
+        try {
+            return sService.isAlertMode();
+        } catch (RemoteException e) {
+            throw e.rethrowFromSystemServer();
+        }
+    }
+
+    public List<AllowedDomain> getAllowedDomains() {
+        try {
+            return sService.getAllowedDomains();
+        } catch (RemoteException e) {
+            throw e.rethrowFromSystemServer();
+        }
+    }
+
+    public void removeAllowedDomain(String name) {
+        try {
+            sService.removeAllowedDomain(name);
+        } catch (RemoteException e) {
+            throw e.rethrowFromSystemServer();
+        }
+    }
 }
