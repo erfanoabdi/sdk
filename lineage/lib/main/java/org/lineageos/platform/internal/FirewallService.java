@@ -163,7 +163,7 @@ public class FirewallService extends LineageSystemService {
     private static final String ATTRIBUTE_URL = "url";
     private static final String ATTRIBUTE_VERSION = "version";
     private static final String ATTRIBUTE_BLACKLIST = "isBlacklist";
-    private static final String COMMON_DNS = "1.1.1.1";
+    private static final String COMMON_DNS = "208.67.220.220";
     private static final long AIRPLANE_RECONNECT_TIMEOUT_MS = 60_000L;
     private static final long AIRPLANE_RECONNECT_POLL_MS = 3_000L;
     private static final String ANDROID_KEYSTORE = "AndroidKeyStore";
