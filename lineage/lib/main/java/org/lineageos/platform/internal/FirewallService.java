@@ -1019,20 +1019,10 @@ public class FirewallService extends LineageSystemService {
         SystemProperties.set("persist.volla.firewall.enable", enable ? "true" : "false");
         SystemProperties.set("sys.volla.firewall.enable", enable ? "1" : "0");
         if (enable) {
-            if (mBlockDb == null) {
-                mBlockDb = new FirewallBlockDatabase(mContext,
-                    new File(Environment.getDataSystemCeDirectory(mUserId), "firewall_events.db")
-                        .getAbsolutePath());
-            }
             mHandler.sendEmptyMessage(FirewallHandler.MSG_WRITE_CONF);
             SystemProperties.set("ctl.start", "volla.dnsmasq");
         } else {
             SystemProperties.set("ctl.stop", "volla.dnsmasq");
-            if (mBlockDb != null) {
-                mBlockDb.checkpoint();
-                mBlockDb.close();
-                mBlockDb = null;
-            }
         }
         mHandler.sendEmptyMessage(FirewallHandler.MSG_RESET_RESTRICTED_APPS);
         activateWebServer(enable);
