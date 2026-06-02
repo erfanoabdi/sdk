@@ -54,7 +54,7 @@ import libcore.io.IoUtils;
 class TcpProxy {
 
     interface BlockListener {
-        void onBlocked(String domain, int uid, String packageName, String appName);
+        void onBlocked(String domain, int uid, String packageName, String appName, int port);
     }
 
     private static final String TAG = "TcpProxy";
@@ -141,7 +141,7 @@ class TcpProxy {
                 return;
             }
 
-            mListener.onBlocked(domain != null ? domain : "unknown", uid, pkg, appName);
+            mListener.onBlocked(domain != null ? domain : "unknown", uid, pkg, appName, mPort);
 
             if (mSSLContext != null) {
                 sBridgeSni.set(domain);

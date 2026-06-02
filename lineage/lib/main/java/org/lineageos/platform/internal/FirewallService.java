@@ -40,6 +40,7 @@ import android.os.Environment;
 import android.os.Handler;
 import android.os.IBinder;
 import android.os.Looper;
+import android.os.ParcelFileDescriptor;
 import android.os.RemoteException;
 import android.os.ServiceManager;
 import android.os.SystemProperties;
@@ -204,6 +205,7 @@ public class FirewallService extends LineageSystemService {
     private AtomicFile mAllowedFile;
     private final ArrayMap<String, Long> mAllowedDomains = new ArrayMap<>();
     private BroadcastReceiver mNotifActionReceiver;
+    private FirewallBlockDatabase mBlockDb;
 
     private final ArrayList<String> mManualDomainsList = new ArrayList<String>();
     private final ArrayList<String> mAppsList = new ArrayList<String>();
@@ -246,6 +248,9 @@ public class FirewallService extends LineageSystemService {
             mUserId = userHandle;
             mAllowedFile = new AtomicFile(new File(
                 Environment.getDataSystemCeDirectory(mUserId), ALLOWED_FILE_NAME));
+            mBlockDb = new FirewallBlockDatabase(mContext,
+                new File(Environment.getDataSystemCeDirectory(mUserId), "firewall_events.db")
+                    .getAbsolutePath());
             setupNotificationChannel();
             registerNotifActionReceiver();
             initCA();
@@ -1033,10 +1038,20 @@ public class FirewallService extends LineageSystemService {
     public void activate(boolean enable) {
         SystemProperties.set("persist.volla.firewall.enable", enable ? "true" : "false");
         if (enable) {
+            if (mBlockDb == null) {
+                mBlockDb = new FirewallBlockDatabase(mContext,
+                    new File(Environment.getDataSystemCeDirectory(mUserId), "firewall_events.db")
+                        .getAbsolutePath());
+            }
             mHandler.sendEmptyMessage(FirewallHandler.MSG_WRITE_CONF);
             SystemProperties.set("ctl.start", "volla.dnsmasq");
         } else {
             SystemProperties.set("ctl.stop", "volla.dnsmasq");
+            if (mBlockDb != null) {
+                mBlockDb.checkpoint();
+                mBlockDb.close();
+                mBlockDb = null;
+            }
         }
         mHandler.sendEmptyMessage(FirewallHandler.MSG_RESET_RESTRICTED_APPS);
         activateWebServer(enable);
@@ -1291,10 +1306,12 @@ public class FirewallService extends LineageSystemService {
                     mHandler.sendEmptyMessage(FirewallHandler.MSG_WRITE_CONF);
                     mHandler.removeCallbacks(mExpireRunnable);
                     mHandler.postDelayed(mExpireRunnable, ALLOW_TEMP_MS + 1000);
+                    if (mBlockDb != null) mBlockDb.updateAllowed(domain, "temp");
                 } else if (ACTION_ALLOW_PERM.equals(action)) {
                     mAllowedDomains.put(domain, -1L);
                     writeAllowedDomains();
                     mHandler.sendEmptyMessage(FirewallHandler.MSG_WRITE_CONF);
+                    if (mBlockDb != null) mBlockDb.updateAllowed(domain, "perm");
                 }
                 // ACTION_DENY: notification already cancelled above, nothing else to do
             }
@@ -1306,7 +1323,31 @@ public class FirewallService extends LineageSystemService {
         mContext.registerReceiver(mNotifActionReceiver, filter, Context.RECEIVER_NOT_EXPORTED);
     }
 
-    void onDomainBlocked(String domain, int uid, String pkg, String appName) {
+    void onDomainBlocked(String domain, int uid, String pkg, String appName, int port) {
+        // Determine domain source: manual list (in RAM) or a template (file lookup).
+        String sourceType, templateName;
+        if (mManualDomainsList.contains(domain)) {
+            sourceType = "manual";
+            templateName = null;
+        } else {
+            sourceType = "template";
+            templateName = null;
+            ArrayMap<String, List<String>> listDomains = readDomainListDomainsFromFile();
+            outer:
+            for (DomainListInfo info : mDomainListInfoList) {
+                List<String> domains = listDomains.get(info.id);
+                if (domains != null && domains.contains(domain)) {
+                    templateName = info.title;
+                    break outer;
+                }
+            }
+        }
+
+        if (mBlockDb != null) {
+            mBlockDb.insertEvent(System.currentTimeMillis(), domain, appName, pkg,
+                port == 443, isBlacklistMode(), sourceType, templateName);
+        }
+
         if (!isAlertMode()) return;
         int notifId = domain.hashCode();
 
@@ -1492,6 +1533,42 @@ public class FirewallService extends LineageSystemService {
         @Override
         public void removeAllowedDomain(String name) {
             FirewallService.this.removeAllowedDomain(name);
+        }
+
+        @Override
+        public ParcelFileDescriptor getBlockEventsDb() {
+            if (mBlockDb == null) return null;
+            try {
+                mBlockDb.checkpoint();
+                final File dbFile = new File(Environment.getDataSystemCeDirectory(mUserId),
+                    "firewall_events.db");
+                // Return a pipe so the client can read the raw bytes and save them
+                // to its own cache dir. A direct PFD to the file would have SQLite
+                // resolve the /proc/self/fd symlink back to the protected real path,
+                // causing SQLITE_CANTOPEN (Permission denied).
+                final ParcelFileDescriptor[] pipe = ParcelFileDescriptor.createPipe();
+                new Thread(() -> {
+                    try (ParcelFileDescriptor.AutoCloseOutputStream out =
+                                new ParcelFileDescriptor.AutoCloseOutputStream(pipe[1]);
+                         java.io.FileInputStream in = new java.io.FileInputStream(dbFile)) {
+                        byte[] buf = new byte[8192];
+                        int n;
+                        while ((n = in.read(buf)) != -1) out.write(buf, 0, n);
+                    } catch (Exception e) {
+                        Slog.e(TAG, "getBlockEventsDb pipe write failed", e);
+                        IoUtils.closeQuietly(pipe[1]);
+                    }
+                }, "firewall-db-pipe").start();
+                return pipe[0];
+            } catch (Exception e) {
+                Slog.e(TAG, "getBlockEventsDb failed", e);
+                return null;
+            }
+        }
+
+        @Override
+        public void clearBlockEvents() {
+            if (mBlockDb != null) mBlockDb.clearEvents();
         }
     };
 

@@ -70,4 +70,8 @@ interface IFirewallService {
 
     void removeAllowedDomain(String name);
 
+    ParcelFileDescriptor getBlockEventsDb();
+
+    void clearBlockEvents();
+
 }

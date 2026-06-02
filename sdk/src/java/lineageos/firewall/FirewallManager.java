@@ -18,6 +18,7 @@ package lineageos.firewall;
 
 import android.content.Context;
 import android.os.IBinder;
+import android.os.ParcelFileDescriptor;
 import android.os.RemoteException;
 import android.os.ServiceManager;
 import android.os.ServiceManager.ServiceNotFoundException;
@@ -260,6 +261,22 @@ public class FirewallManager {
     public void removeAllowedDomain(String name) {
         try {
             sService.removeAllowedDomain(name);
+        } catch (RemoteException e) {
+            throw e.rethrowFromSystemServer();
+        }
+    }
+
+    public ParcelFileDescriptor getBlockEventsDb() {
+        try {
+            return sService.getBlockEventsDb();
+        } catch (RemoteException e) {
+            throw e.rethrowFromSystemServer();
+        }
+    }
+
+    public void clearBlockEvents() {
+        try {
+            sService.clearBlockEvents();
         } catch (RemoteException e) {
             throw e.rethrowFromSystemServer();
         }
