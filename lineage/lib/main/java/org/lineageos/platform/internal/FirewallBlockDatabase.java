@@ -49,15 +49,24 @@ class FirewallBlockDatabase extends SQLiteOpenHelper {
 
     @Override
     public void onCreate(SQLiteDatabase db) {
+        // If this is logged after reboot, the DB file was missing or wiped before open.
+        Slog.w(TAG, "onCreate: creating fresh block_events table (first run or file was gone)");
         db.execSQL(CREATE_TABLE);
     }
 
     @Override
     public void onUpgrade(SQLiteDatabase db, int oldVersion, int newVersion) {
-        // Future migrations go here.
-        Slog.w(TAG, "Upgrading block event DB from " + oldVersion + " to " + newVersion);
-        db.execSQL("DROP TABLE IF EXISTS " + BlockEventSchema.TABLE);
-        onCreate(db);
+        Slog.w(TAG, "Upgrading block event DB v" + oldVersion + " → v" + newVersion
+            + " (preserving existing rows)");
+        // Add new columns introduced after v1 here with ALTER TABLE … ADD COLUMN.
+        // Never DROP the table — doing so wipes the entire history on every schema change.
+    }
+
+    @Override
+    public void onDowngrade(SQLiteDatabase db, int oldVersion, int newVersion) {
+        // Tolerate downgrade (e.g. rolling back a build) without wiping data.
+        Slog.w(TAG, "Downgrading block event DB v" + oldVersion + " → v" + newVersion
+            + " (ignored, keeping data)");
     }
 
     long insertEvent(long timestamp, String domain, String appName, String appPkg,
