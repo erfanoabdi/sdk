@@ -206,6 +206,7 @@ public class FirewallService extends LineageSystemService {
     private final ArrayMap<String, Long> mAllowedDomains = new ArrayMap<>();
     private BroadcastReceiver mNotifActionReceiver;
     private FirewallBlockDatabase mBlockDb;
+    private final ArrayList<String> mDeniedAlertDomains = new ArrayList<>();
 
     private final ArrayList<String> mManualDomainsList = new ArrayList<String>();
     private final ArrayList<String> mAppsList = new ArrayList<String>();
@@ -1296,7 +1297,10 @@ public class FirewallService extends LineageSystemService {
                     mHandler.sendEmptyMessage(FirewallHandler.MSG_WRITE_CONF);
                     if (mBlockDb != null) mBlockDb.updateAllowed(domain, "perm");
                 }
-                // ACTION_DENY: notification already cancelled above, nothing else to do
+                // ACTION_DENY: add to session deny list so the user isn't alerted again
+                if (ACTION_DENY.equals(action) && !mDeniedAlertDomains.contains(domain)) {
+                    mDeniedAlertDomains.add(domain);
+                }
             }
         };
         IntentFilter filter = new IntentFilter();
@@ -1332,6 +1336,7 @@ public class FirewallService extends LineageSystemService {
         }
 
         if (!isAlertMode()) return;
+        if (mDeniedAlertDomains.contains(domain)) return;
         int notifId = domain.hashCode();
 
         // Set package="android" to make the intent explicit — bypasses the
@@ -1399,6 +1404,7 @@ public class FirewallService extends LineageSystemService {
         @Override
         public void activate(boolean enable) {
             long token = clearCallingIdentity();
+            mDeniedAlertDomains.clear();
             FirewallService.this.activate(enable);
             restoreCallingIdentity(token);
         }
