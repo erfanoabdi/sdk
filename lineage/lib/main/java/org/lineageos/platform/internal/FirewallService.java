@@ -164,6 +164,11 @@ public class FirewallService extends LineageSystemService {
     private static final String ATTRIBUTE_VERSION = "version";
     private static final String ATTRIBUTE_BLACKLIST = "isBlacklist";
     private static final String COMMON_DNS = "208.67.220.220";
+    private static final String[] ALWAYS_REAL_DNS_DOMAINS = {
+        "connectivitycheck.volla.online",
+        "connectivity-check.ubuntu.com",
+        "conncheck.opensuse.org",
+    };
     private static final long AIRPLANE_RECONNECT_TIMEOUT_MS = 60_000L;
     private static final long AIRPLANE_RECONNECT_POLL_MS = 3_000L;
     private static final String ANDROID_KEYSTORE = "AndroidKeyStore";
@@ -977,7 +982,7 @@ public class FirewallService extends LineageSystemService {
         if (!allDomains.isEmpty()) {
             for (String domain : allDomains) {
                 if (blacklist) {
-                    if (!isAllowed(domain))
+                    if (!isAllowed(domain) && !isAlwaysRealDnsDomain(domain))
                         confLines.add("address=/" + domain + "/127.0.0.1");
                 } else {
                     confLines.add("server=/" + domain + "/" + COMMON_DNS);
@@ -994,6 +999,10 @@ public class FirewallService extends LineageSystemService {
                 confLines.add("address=/#/127.0.0.1");
             }
         }
+        // These connectivity endpoints must always use upstream DNS resolution.
+        for (String domain : ALWAYS_REAL_DNS_DOMAINS) {
+            confLines.add("server=/" + domain + "/" + COMMON_DNS);
+        }
         // Always block known DoH providers so apps cannot bypass domain-level
         // blocking by switching to an encrypted resolver. Applied in all modes.
         for (String doh : KnownDohDomains.ALL) {
@@ -1008,6 +1017,16 @@ public class FirewallService extends LineageSystemService {
         }
         if (isActivate())
             SystemProperties.set("ctl.restart", "volla.dnsmasq");
+    }
+
+    private boolean isAlwaysRealDnsDomain(String domain) {
+        if (domain == null) return false;
+        for (String alwaysAllowed : ALWAYS_REAL_DNS_DOMAINS) {
+            if (alwaysAllowed.equalsIgnoreCase(domain)) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private void resetRestrictedApps() {
