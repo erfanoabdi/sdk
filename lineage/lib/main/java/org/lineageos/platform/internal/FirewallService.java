@@ -1086,7 +1086,7 @@ public class FirewallService extends LineageSystemService {
     }
 
     public boolean isBlacklistMode() {
-        return SystemProperties.getBoolean("persist.volla.blacklist.enable", false);
+        return SystemProperties.getBoolean("persist.volla.blacklist.enable", true);
     }
 
     private void addDomainToList(String domain) {
