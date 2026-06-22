@@ -163,7 +163,7 @@ public class FirewallService extends LineageSystemService {
     private static final String ATTRIBUTE_URL = "url";
     private static final String ATTRIBUTE_VERSION = "version";
     private static final String ATTRIBUTE_BLACKLIST = "isBlacklist";
-    private static final String COMMON_DNS = "208.67.220.220";
+    private static final String COMMON_DNS = "9.9.9.9";
     private static final String[] ALWAYS_REAL_DNS_DOMAINS = {
         "connectivitycheck.volla.online",
         "connectivity-check.ubuntu.com",
