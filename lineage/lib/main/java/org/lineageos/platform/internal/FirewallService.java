@@ -218,6 +218,7 @@ public class FirewallService extends LineageSystemService {
     private final ArrayList<String> mAppsList = new ArrayList<String>();
     private final ArrayList<DomainListInfo> mDomainListInfoList = new ArrayList<DomainListInfo>();
     private final ArrayMap<String, List<String>> mPendingDomainListAdds = new ArrayMap<>();
+    private final Object mDomainListsLock = new Object();
     private long mAirplaneRefreshDeadline = 0;
 
     private X509Certificate mCACert;
@@ -876,29 +877,34 @@ public class FirewallService extends LineageSystemService {
     private void writeDomainListsState() {
         if (DEBUG_FIREWALL) Slog.v(TAG, "writeDomainListsState()");
 
-        ArrayMap<String, List<String>> domains = readDomainListDomainsFromFile();
-        domains.putAll(mPendingDomainListAdds);
-        mPendingDomainListAdds.clear();
+        // Held for the full read-merge-write so a chunked addDomainList() call that arrives
+        // mid-write can't read a stale (not-yet-flushed) file and clobber this write's result
+        // once it lands in mPendingDomainListAdds and gets merged on the next pass.
+        synchronized (mDomainListsLock) {
+            ArrayMap<String, List<String>> domains = readDomainListDomainsFromFile();
+            domains.putAll(mPendingDomainListAdds);
+            mPendingDomainListAdds.clear();
 
-        FileOutputStream out = null;
-        try {
-            out = mDomainListsFile.startWrite();
-            XmlSerializer serializer = Xml.newSerializer();
-            serializer.setOutput(out, StandardCharsets.UTF_8.name());
-            serializer.setFeature(
-                    "http://xmlpull.org/v1/doc/features.html#indent-output", true);
-            serializer.startDocument(null, true);
-            serializeDomainLists(serializer, domains);
-            serializer.endDocument();
-            mDomainListsFile.finishWrite(out);
-            if (DEBUG_FIREWALL) Slog.v(TAG, "Wrote " + DOMAIN_LISTS_FILE_NAME + " successfully");
-        } catch (IllegalArgumentException | IllegalStateException | IOException e) {
-            Slog.wtf(TAG, "Failed to write " + DOMAIN_LISTS_FILE_NAME + ", restoring backup", e);
-            if (out != null) {
-                mDomainListsFile.failWrite(out);
+            FileOutputStream out = null;
+            try {
+                out = mDomainListsFile.startWrite();
+                XmlSerializer serializer = Xml.newSerializer();
+                serializer.setOutput(out, StandardCharsets.UTF_8.name());
+                serializer.setFeature(
+                        "http://xmlpull.org/v1/doc/features.html#indent-output", true);
+                serializer.startDocument(null, true);
+                serializeDomainLists(serializer, domains);
+                serializer.endDocument();
+                mDomainListsFile.finishWrite(out);
+                if (DEBUG_FIREWALL) Slog.v(TAG, "Wrote " + DOMAIN_LISTS_FILE_NAME + " successfully");
+            } catch (IllegalArgumentException | IllegalStateException | IOException e) {
+                Slog.wtf(TAG, "Failed to write " + DOMAIN_LISTS_FILE_NAME + ", restoring backup", e);
+                if (out != null) {
+                    mDomainListsFile.failWrite(out);
+                }
+            } finally {
+                IoUtils.closeQuietly(out);
             }
-        } finally {
-            IoUtils.closeQuietly(out);
         }
     }
 
@@ -927,39 +933,78 @@ public class FirewallService extends LineageSystemService {
 
     private void addDomainList(DomainListInfo info, List<String> domains) {
         if (DEBUG_FIREWALL) Slog.v(TAG, "addDomainList id:" + info.id);
-        for (DomainListInfo existing : mDomainListInfoList) {
-            if (existing.id.equals(info.id)) {
-                if (DEBUG_FIREWALL) Slog.v(TAG, "addDomainList: id already exists, skipping");
-                return;
+        // Callers (e.g. TemplateDownloader) split large lists into chunks and call this
+        // repeatedly with the same id to stay under the binder transaction size limit, so an
+        // existing id must append rather than be treated as a duplicate and skipped. The whole
+        // read-modify-put is locked against writeDomainListsState() so a chunk arriving mid-write
+        // can't read a stale on-disk snapshot and later overwrite the freshly written one.
+        synchronized (mDomainListsLock) {
+            boolean exists = false;
+            for (DomainListInfo existing : mDomainListInfoList) {
+                if (existing.id.equals(info.id)) {
+                    exists = true;
+                    break;
+                }
+            }
+            List<String> pending = mPendingDomainListAdds.get(info.id);
+            if (pending == null) {
+                pending = new ArrayList<>();
+                if (exists) {
+                    List<String> onDisk = readDomainListDomainsFromFile().get(info.id);
+                    if (onDisk != null) pending.addAll(onDisk);
+                }
+            }
+            pending.addAll(domains);
+            mPendingDomainListAdds.put(info.id, pending);
+            if (!exists) {
+                mDomainListInfoList.add(info);
             }
         }
-        mDomainListInfoList.add(info);
-        mPendingDomainListAdds.put(info.id, new ArrayList<>(domains));
-        mHandler.sendEmptyMessage(FirewallHandler.MSG_WRITE_DOMAIN_LISTS_STATE);
+        scheduleWriteDomainListsState();
         mHandler.sendEmptyMessage(FirewallHandler.MSG_WRITE_CONF);
+    }
+
+    // Coalesces bursts of chunked addDomainList()/removeDomainList() calls (a large list can
+    // arrive as dozens of chunks within milliseconds) into a single write instead of redoing
+    // the full XML rewrite after every chunk.
+    private static final long WRITE_DOMAIN_LISTS_DEBOUNCE_MS = 500L;
+
+    private void scheduleWriteDomainListsState() {
+        mHandler.removeMessages(FirewallHandler.MSG_WRITE_DOMAIN_LISTS_STATE);
+        mHandler.sendEmptyMessageDelayed(FirewallHandler.MSG_WRITE_DOMAIN_LISTS_STATE,
+                WRITE_DOMAIN_LISTS_DEBOUNCE_MS);
     }
 
     private void removeDomainList(String id) {
         if (DEBUG_FIREWALL) Slog.v(TAG, "removeDomainList id:" + id);
-        DomainListInfo target = null;
-        for (DomainListInfo info : mDomainListInfoList) {
-            if (info.id.equals(id)) {
-                target = info;
-                break;
+        boolean removed;
+        synchronized (mDomainListsLock) {
+            DomainListInfo target = null;
+            for (DomainListInfo info : mDomainListInfoList) {
+                if (info.id.equals(id)) {
+                    target = info;
+                    break;
+                }
+            }
+            removed = target != null;
+            if (removed) {
+                mPendingDomainListAdds.remove(id);
+                mDomainListInfoList.remove(target);
+            } else if (DEBUG_FIREWALL) {
+                Slog.v(TAG, "removeDomainList: id not found");
             }
         }
-        if (target == null) {
-            if (DEBUG_FIREWALL) Slog.v(TAG, "removeDomainList: id not found");
+        if (!removed) {
             return;
         }
-        mPendingDomainListAdds.remove(id);
-        mDomainListInfoList.remove(target);
-        mHandler.sendEmptyMessage(FirewallHandler.MSG_WRITE_DOMAIN_LISTS_STATE);
+        scheduleWriteDomainListsState();
         mHandler.sendEmptyMessage(FirewallHandler.MSG_WRITE_CONF);
     }
 
     private List<DomainListInfo> getDomainLists() {
-        return new ArrayList<>(mDomainListInfoList);
+        synchronized (mDomainListsLock) {
+            return new ArrayList<>(mDomainListInfoList);
+        }
     }
 
     private void resetDnsConf() {
