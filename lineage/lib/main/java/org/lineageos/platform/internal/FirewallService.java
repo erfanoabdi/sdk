@@ -71,6 +71,7 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.net.InetSocketAddress;
 import java.net.Socket;
+import android.security.KeyChain;
 import android.security.keystore.KeyGenParameterSpec;
 import android.security.keystore.KeyProperties;
 import com.android.internal.org.bouncycastle.asn1.x509.BasicConstraints;
@@ -427,12 +428,33 @@ public class FirewallService extends LineageSystemService {
             // Always reinstall — installToSystemCaStore overwrites, so stale certs
             // (same filename but different cert bytes) get replaced on every boot.
             installToSystemCaStore(mCACert);
+            hideCAKeyFromKeyChainPicker();
             mSSLContext = SSLContext.getInstance("TLS");
             mSSLContext.init(new KeyManager[]{new SNIKeyManager()}, null, null);
             Slog.i(TAG, "initCA: done, CA=" + mCACert.getSubjectDN()
                 + " valid until " + mCACert.getNotAfter());
         } catch (Exception e) {
             Slog.e(TAG, "initCA: FAILED", e);
+        }
+    }
+
+    // Our MITM CA's private key lives in "AndroidKeyStore" under CA_KEY_ALIAS, in the same
+    // enumerable keystore view that KeyChainActivity's cert chooser scans. KeyChain's own
+    // GrantsDatabase, the first time it's ever created on a device, grandfathers in every
+    // pre-existing AndroidKeyStore private-key alias as "user selectable" — meant to migrate
+    // keys that predate that database, but it doesn't know ours isn't a real user identity.
+    // The result: our CA key shows up (as "volla_firewall_ca") in the "Select certificate"
+    // dialog any app gets via KeyChain.choosePrivateKeyAlias(), right alongside real
+    // user-installed identities — and could be selected to sign arbitrary attacker-chosen
+    // data with a key this device already trusts as a CA. Explicitly mark it unselectable
+    // every boot so it never shows there, regardless of whether it was already grandfathered
+    // in as selectable on a device that updated before this fix existed.
+    private void hideCAKeyFromKeyChainPicker() {
+        try (KeyChain.KeyChainConnection conn = KeyChain.bind(mContext)) {
+            conn.getService().setUserSelectable(CA_KEY_ALIAS, false);
+            Slog.i(TAG, "initCA: marked " + CA_KEY_ALIAS + " as not user-selectable in KeyChain");
+        } catch (Exception e) {
+            Slog.e(TAG, "initCA: failed to hide CA key from KeyChain picker", e);
         }
     }
 
@@ -487,6 +509,16 @@ public class FirewallService extends LineageSystemService {
             byte[] der = cert.getEncoded();
             File userDir = new File("/data/misc/user/" + mUserId + "/cacerts-added");
             userDir.mkdirs();
+            // Match TrustedCertificateStore#writeCertificate() upstream, which does this
+            // same mkdirs()+setReadable+setExecutable dance whenever it lazily creates this
+            // directory (e.g. on a user's first manual CA install). Without the world
+            // read+execute bits here, a directory we create first (as system) can end up
+            // less permissive than what the platform expects, so other components/apps
+            // can't traverse it to read installed CAs back.
+            if (!userDir.setReadable(true, false))
+                Slog.w(TAG, "setReadable failed for " + userDir);
+            if (!userDir.setExecutable(true, false))
+                Slog.w(TAG, "setExecutable failed for " + userDir);
             File userFile = new File(userDir, filename);
             Files.write(userFile.toPath(), der);
             if (!userFile.setReadable(true, false))
